@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BromptCard</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="popup-shell">
+      <section class="card">
+        <div class="hero">
+          <div>
+            <div class="eyebrow">BROMPTCARD</div>
+            <h1 data-i18n="heading">Prompt Bridge</h1>
+          </div>
+        </div>
+
+        <p class="intro" data-i18n="intro">Chuột phải vào ảnh để chọn mode. Phân tích qua tab Gemini Gem đã đăng nhập.</p>
+
+        <label class="field">
+          <span data-i18n="providerLabel">Mode mặc định</span>
+          <select id="provider"></select>
+        </label>
+
+        <label class="field field-check">
+          <span class="check-row">
+            <input id="hoverActionsEnabled" type="checkbox" />
+            <span data-i18n="hoverActionsLabel">Hiện nút Faithful/Style khi hover ảnh</span>
+          </span>
+          <span class="field-hint" data-i18n="hoverActionsHint">Mặc định tắt. Chuột phải vào ảnh để chọn mode (kể cả ảnh nhỏ / custom).</span>
+        </label>
+
+        <section class="status-card site-card" aria-live="polite">
+          <div class="status-topline">
+            <span class="status-caption" data-i18n="modesLabel">Modes</span>
+          </div>
+
+          <label class="field site-field">
+            <span data-i18n="modeNameLabel">Tên mode</span>
+            <input
+              id="modeNameInput"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              data-i18n-placeholder="modeNamePlaceholder"
+              placeholder="Ví dụ: Fashion Prompt"
+            />
+          </label>
+
+          <label class="field site-field">
+            <span data-i18n="modeGemLabel">Gem URL hoặc ID</span>
+            <input
+              id="modeGemInput"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              data-i18n-placeholder="modeGemPlaceholder"
+              placeholder="Dán link Gemini Gem hoặc ID"
+            />
+          </label>
+
+          <label class="field site-field">
+            <span data-i18n="modeKindLabel">Kiểu kết quả</span>
+            <select id="modeKindSelect">
+              <option value="prompt" data-i18n="modeKindPrompt">Prompt</option>
+              <option value="style" data-i18n="modeKindStyle">Style</option>
+            </select>
+          </label>
+
+          <label class="field site-field">
+            <span data-i18n="modeFormatLabel">Định dạng đầu ra</span>
+            <select id="modeFormatSelect">
+              <option value="prompt" data-i18n="modeFormatPrompt">Prompt chuẩn</option>
+              <option value="style" data-i18n="modeFormatStyle">Style JSON chuẩn</option>
+              <option value="custom_json" data-i18n="modeFormatCustom">Custom JSON</option>
+            </select>
+          </label>
+
+          <div id="modeAdvancedFields" hidden>
+            <label class="field site-field">
+              <span data-i18n="modePrimaryFieldLabel">Field chính</span>
+              <input
+                id="modePrimaryFieldInput"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                data-i18n-placeholder="modePrimaryFieldPlaceholder"
+                placeholder="Ví dụ: lighting_prompt"
+              />
+            </label>
+
+            <label class="field site-field">
+              <span data-i18n="modeNegativeFieldLabel">Field negative</span>
+              <input
+                id="modeNegativeFieldInput"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                data-i18n-placeholder="modeNegativeFieldPlaceholder"
+                placeholder="Ví dụ: negative_prompt"
+              />
+            </label>
+
+            <label class="field site-field">
+              <span data-i18n="modeTagFieldsLabel">Field tags</span>
+              <input
+                id="modeTagFieldsInput"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                data-i18n-placeholder="modeTagFieldsPlaceholder"
+                placeholder="Ví dụ: mood,lighting.direction"
+              />
+            </label>
+
+            <label class="field site-field">
+              <span data-i18n="modeMetaFieldsLabel">Field meta</span>
+              <input
+                id="modeMetaFieldsInput"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                data-i18n-placeholder="modeMetaFieldsPlaceholder"
+                placeholder="Ví dụ: lighting.direction,color_temperature"
+              />
+            </label>
+          </div>
+
+          <p class="site-note" data-i18n="modeNote">Mỗi mode trỏ tới một Gemini Gem riêng. Prompt/Style dùng parser mặc định; Custom JSON map field riêng.</p>
+
+          <div class="actions stack site-actions">
+            <button id="addModeButton" class="secondary wide" type="button" data-i18n="addMode">Thêm mode</button>
+          </div>
+
+          <div id="modeList" class="site-list"></div>
+        </section>
+
+        <section class="status-card" aria-live="polite">
+          <div class="status-topline">
+            <span id="statusDot" class="status-dot"></span>
+            <span class="status-caption" data-i18n="statusLabel">Trạng thái</span>
+          </div>
+          <div id="status" class="status-copy"></div>
+        </section>
+
+        <section class="status-card site-card" aria-live="polite">
+          <div class="status-topline">
+            <span class="status-caption" data-i18n="sitesLabel">Website được bật</span>
+          </div>
+          <div id="siteSummary" class="status-copy" data-i18n="siteLoading">Đang đọc website hiện tại...</div>
+
+          <label class="field site-field">
+            <span data-i18n="siteInputLabel">Thêm website</span>
+            <input
+              id="siteInput"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              data-i18n-placeholder="siteInputPlaceholder"
+              placeholder="Dán URL hoặc domain"
+            />
+          </label>
+
+          <p class="site-note" data-i18n="siteNote">Bạn có thể dán full URL hoặc chỉ domain. Subdomain như www.behance.net cũng sẽ được áp dụng.</p>
+
+          <div class="actions stack site-actions">
+            <button id="addSiteButton" class="secondary wide" type="button" data-i18n="addSite">Thêm website</button>
+            <button id="addCurrentSiteButton" class="ghost wide" type="button" data-i18n="addCurrentSite">Bật website hiện tại</button>
+          </div>
+
+          <div id="siteList" class="site-list"></div>
+        </section>
+
+        <div class="actions stack">
+          <button id="openPanelButton" class="primary wide" type="button" data-i18n="openPanel">Mở panel trên tab hiện tại</button>
+          <button id="openProviderButton" class="secondary wide" type="button" data-i18n="openProvider">Mở hoặc chuyển tới tab Gemini Gem</button>
+        </div>
+
+        <p id="message" class="message" aria-live="polite"></p>
+      </section>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

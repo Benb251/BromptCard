@@ -1,0 +1,68 @@
+{
+  "manifest_version": 3,
+  "name": "BromptCard - Image to Prompt (Browser AI)",
+  "version": "0.2.2",
+  "description": "Right-click any image to get structured Vietnamese + English prompts using your logged-in Gemini Gem web session. No API key.",
+  "permissions": [
+    "activeTab",
+    "contextMenus",
+    "scripting",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "https://gemini.google.com/*",
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "BromptCard",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "exclude_matches": [
+        "https://gemini.google.com/*",
+        "https://accounts.google.com/*",
+        "https://*.accounts.google.com/*",
+        "https://oauth.googleusercontent.com/*",
+        "https://*.oauth.googleusercontent.com/*",
+        "https://checkout.link.com/*",
+        "https://*.checkout.link.com/*",
+        "https://checkout.stripe.com/*",
+        "https://*.checkout.stripe.com/*",
+        "https://buy.stripe.com/*",
+        "https://*.buy.stripe.com/*",
+        "https://billing.stripe.com/*",
+        "https://*.billing.stripe.com/*",
+        "https://pay.stripe.com/*",
+        "https://*.pay.stripe.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}
