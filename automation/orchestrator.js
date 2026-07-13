@@ -550,7 +550,7 @@ async function analyzeWithGemini(providerId, target, sourceTabId) {
       promptText
     });
 
-    if (!result?.ok && FOCUS_FALLBACK_ERRORS.has(result.error)) {
+    if (!result?.ok && FOCUS_FALLBACK_ERRORS.has(result?.error)) {
       await new Promise((resolve) => setTimeout(resolve, 800));
       await activateTab(tab.id);
       try {
