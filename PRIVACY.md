@@ -26,7 +26,7 @@ BromptCard does not retain a copy of your data on a developer server. Local hist
 - `contextMenus`, `activeTab`, `scripting`, and `tabs` provide the image right-click action, panel, screenshot crop, and interaction with the Gemini tab you chose to use.
 - `storage` stores local settings and history.
 - Access to `gemini.google.com` is required to use the Gemini tab.
-- Website access is requested as an **optional permission**, per site, only when you choose to enable that site. It lets BromptCard read the image you select and show its panel on that site.
+- Pinterest access is included because Pinterest is the default supported site and the extension must fetch the image you select there. Access to every other website is requested as an **optional permission**, per site, only when you choose to enable it.
 
 ## Contact
 
