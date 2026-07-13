@@ -156,7 +156,9 @@ export function injectedAutomation(config) {
       /* ignore */
     }
     if (readEditorText(editor).length > 0) {
-      editor.innerHTML = "";
+      // Gemini can enforce Trusted Types, which rejects innerHTML assignment.
+      // DOM node APIs work in both composer variants.
+      editor.replaceChildren();
     }
   }
 
@@ -209,7 +211,7 @@ export function injectedAutomation(config) {
     }
 
     // Strategy 3: direct DOM, single paragraph.
-    editor.innerHTML = "";
+    editor.replaceChildren();
     const paragraph = document.createElement("p");
     paragraph.textContent = flat;
     editor.appendChild(paragraph);
