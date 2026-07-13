@@ -2993,12 +2993,25 @@
     const currentModes = modes();
     menu.innerHTML = currentModes
       .map((mode, index) => `
-        <button class="hover-button${index === 0 ? " primary" : ""}" data-hover-mode="${escapeHtml(mode.id)}">
+        <button class="hover-button${index === 0 ? " primary" : ""}" data-hover-mode="${escapeHtml(mode.id)}" type="button">
           ${renderModeIcon(mode.resultKind)}
           <span>${escapeHtml(mode.name)}</span>
         </button>
       `)
       .join("");
+
+    menu.querySelectorAll("[data-hover-mode]").forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const target = imageTargetFromElement(hoveredImage);
+        const modeId = button.getAttribute("data-hover-mode") || state.provider;
+        hideHoverMenu();
+        if (target) {
+          void analyzeTarget(target, modeId);
+        }
+      });
+    });
   }
 
   function updateQuotaChip() {
