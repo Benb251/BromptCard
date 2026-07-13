@@ -504,6 +504,7 @@ export function injectedAutomation(config) {
       hasFocus: typeof document !== "undefined" ? document.hasFocus() : null
     };
 
+    try {
     // Nudge a frozen/black Gemini surface after window focus.
     try {
       window.focus();
@@ -669,6 +670,14 @@ export function injectedAutomation(config) {
         }
         return { ok: false, error: "TIMEOUT", message: "Timed out waiting for the provider response.", diag };
       }
+    }
+    } catch (error) {
+      return {
+        ok: false,
+        error: "INJECTION_RUNTIME_ERROR",
+        message: `Gemini automation script failed: ${error instanceof Error ? error.message : String(error)}`,
+        diag
+      };
     }
   }
 

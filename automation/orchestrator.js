@@ -9,7 +9,13 @@ const READY_TIMEOUT_MS = 12000;
 const PROVIDER_TAB_KEY_PREFIX = "pcProviderTab:";
 /** Separate unfocused window so Gemini stays document.visibilityState=visible without stealing the user's tab. */
 const GEMINI_BG_WINDOW_KEY = "pcGeminiBgWindowId";
-const TRANSIENT_AUTOMATION_ERRORS = new Set(["NOT_READY", "SEND_UNAVAILABLE"]);
+const TRANSIENT_AUTOMATION_ERRORS = new Set([
+  "NOT_READY",
+  "SEND_UNAVAILABLE",
+  "INJECTION_NO_RESULT",
+  "INJECTION_RUNTIME_ERROR",
+  "INJECTION_EXECUTION_FAILED"
+]);
 
 function providerTabKey(providerId) {
   return `${PROVIDER_TAB_KEY_PREFIX}${providerId}`;
@@ -472,13 +478,28 @@ async function restoreTab(tabId) {
 }
 
 async function runInTab(tabId, world, config) {
-  const [result] = await chrome.scripting.executeScript({
-    target: { tabId },
-    world,
-    func: injectedAutomation,
-    args: [config]
-  });
-  return result?.result;
+  try {
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId },
+      world,
+      func: injectedAutomation,
+      args: [config]
+    });
+    if (result?.result) {
+      return result.result;
+    }
+    return {
+      ok: false,
+      error: "INJECTION_NO_RESULT",
+      message: "Gemini did not return a result from the injected automation script."
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: "INJECTION_EXECUTION_FAILED",
+      message: `Could not run Gemini automation: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
 }
 
 async function statusForGemini(providerId) {
