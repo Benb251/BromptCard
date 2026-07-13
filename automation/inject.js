@@ -529,14 +529,6 @@ export function injectedAutomation(config) {
     diag.visibility = document.visibilityState;
     diag.hasFocus = document.hasFocus();
 
-    if (!skipImage && base64) {
-      const blob = base64ToBlob(base64, mimeType);
-      const beforeAttachment = attachmentState(editor);
-      await pasteImage(editor, blob);
-      await waitForAttachmentReady(editor, beforeAttachment, timing, diag);
-      await sleep(timing.uploadSettleMs);
-    }
-
     const wantsText = nonSpaceLen(promptText) > 0;
     diag.expectedText = promptText.length;
 
@@ -556,10 +548,18 @@ export function injectedAutomation(config) {
         };
       }
     } else {
-      // GEM mode: the system prompt is embedded in the Gem, so we send the
-      // image with no prompt text. Give the upload a moment to register.
-      await sleep(800);
       diag.editorText = readEditorText(editor).length;
+    }
+
+    // Set the text before attaching the image. Some Gemini composer variants
+    // keep an attachment inside the editable subtree, so clearing the editor
+    // after an upload can accidentally remove the image.
+    if (!skipImage && base64) {
+      const blob = base64ToBlob(base64, mimeType);
+      const beforeAttachment = attachmentState(editor);
+      await pasteImage(editor, blob);
+      await waitForAttachmentReady(editor, beforeAttachment, timing, diag);
+      await sleep(timing.uploadSettleMs);
     }
 
     const sendButton = await waitFor(() => {

@@ -1,6 +1,6 @@
 import { AnalysisError, parseModeResponse } from "../lib/schema.js";
 import { imageTargetToPayload } from "../lib/image.js";
-import { buildPromptText } from "../lib/prompt.js";
+import { buildGemAnalysisGuard, buildPromptText } from "../lib/prompt.js";
 import { injectedAutomation } from "./inject.js";
 import { createProviderFromMode } from "../providers/index.js";
 import { getModeById, getSettings } from "../storage.js";
@@ -526,7 +526,7 @@ async function analyzeWithGemini(providerId, target, sourceTabId) {
   };
 
   const usesGem = provider.sendPrompt === false;
-  const promptText = usesGem ? "" : buildPromptText(target);
+  const promptText = usesGem ? buildGemAnalysisGuard(target) : buildPromptText(target);
   const canRestoreSource = Number.isInteger(sourceTabId) && sourceTabId !== tab.id;
   const FOCUS_FALLBACK_ERRORS = new Set([
     "NOT_READY",
