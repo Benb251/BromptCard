@@ -54,26 +54,6 @@ const I18N = {
     openProvider: "Mở hoặc chuyển tới tab Gemini Gem",
     openProviderGemini: "Mở hoặc chuyển tới tab Gemini Gem",
     openPanel: "Mở panel trên tab hiện tại",
-    purchase: "Mua Pro",
-    planPro: "Pro - không giới hạn",
-    planFree: "Miễn phí - còn {n}/{limit} lượt hôm nay",
-    planLicense: "Pro - {plan}",
-    planExpires: "Hết hạn {date}",
-    planChipPro: "Pro",
-    planChipFree: "Free",
-    licenseLabel: "Mã kích hoạt",
-    licensePlaceholder: "Nhập mã kích hoạt",
-    activateLicense: "Kích hoạt key",
-    removeLicense: "Gỡ key",
-    purchaseFailed: "Không mở được trang mua.",
-    purchaseUnavailable: "Chưa cấu hình PURCHASE_URL.",
-    licenseActivated: "Đã kích hoạt license thành công.",
-    licenseRemoved: "Đã gỡ license khỏi thiết bị này.",
-    licenseEmpty: "Nhập mã kích hoạt trước khi kích hoạt.",
-    licenseInvalid: "Mã kích hoạt không hợp lệ.",
-    licenseExpired: "Mã kích hoạt đã hết hạn.",
-    licenseNetwork: "Không xác minh được mã kích hoạt. Kiểm tra mạng hoặc backend license.",
-    licenseDisabled: "Billing/license hiện chưa được bật.",
     checking: "Đang kiểm tra tab Gemini Gem...",
     checkingGemini: "Đang kiểm tra tab Gemini Gem...",
     statusReadable: "Không đọc được trạng thái Gemini Gem.",
@@ -97,6 +77,7 @@ const I18N = {
     siteAdded: (host) => `Đã bật ${host}.`,
     siteRemoved: (host) => `Đã tắt ${host}.`,
     siteExists: "Website này đã có trong danh sách.",
+    sitePermissionDenied: "Bạn chưa cấp quyền truy cập website này.",
     siteInvalid: "URL hoặc domain không hợp lệ.",
     addSite: "Thêm website",
     addCurrentSite: "Bật website hiện tại",
@@ -153,26 +134,6 @@ const I18N = {
     openProvider: "Open or focus Gemini Gem tab",
     openProviderGemini: "Open or focus Gemini Gem tab",
     openPanel: "Open panel on active tab",
-    purchase: "Buy Pro",
-    planPro: "Pro - unlimited",
-    planFree: "Free - {n}/{limit} uses left today",
-    planLicense: "Pro - {plan}",
-    planExpires: "Expires {date}",
-    planChipPro: "Pro",
-    planChipFree: "Free",
-    licenseLabel: "License key",
-    licensePlaceholder: "Paste your license key",
-    activateLicense: "Activate key",
-    removeLicense: "Remove key",
-    purchaseFailed: "Could not open the purchase page.",
-    purchaseUnavailable: "PURCHASE_URL is not configured.",
-    licenseActivated: "License activated successfully.",
-    licenseRemoved: "License removed from this device.",
-    licenseEmpty: "Enter a license key before activating.",
-    licenseInvalid: "License key is invalid.",
-    licenseExpired: "License key has expired.",
-    licenseNetwork: "Could not verify the license key. Check the network or license backend.",
-    licenseDisabled: "Billing/license is currently disabled.",
     checking: "Checking Gemini Gem tab...",
     checkingGemini: "Checking Gemini Gem tab...",
     statusReadable: "Could not read Gemini Gem status.",
@@ -196,6 +157,7 @@ const I18N = {
     siteAdded: (host) => `Enabled ${host}.`,
     siteRemoved: (host) => `Disabled ${host}.`,
     siteExists: "That site is already in the list.",
+    sitePermissionDenied: "Website access was not granted.",
     siteInvalid: "Invalid URL or domain.",
     addSite: "Add site",
     addCurrentSite: "Enable current site",
@@ -381,11 +343,14 @@ function renderSiteSummary() {
   }
   const enabled = isUrlAllowed(activeTabSite.url, allowedSites());
   siteSummary.textContent = enabled ? t("siteAllowed", activeTabSite.host) : t("siteBlocked", activeTabSite.host);
-  addCurrentSiteButton.disabled = enabled;
+  // A site can be in the saved allowlist but still need the optional host
+  // permission after an update or a previous denial. Keep this available.
+  addCurrentSiteButton.disabled = false;
 }
 
 async function removeAllowedSite(host) {
   const nextSites = allowedSites().filter((item) => item !== host);
+  await chrome.permissions.remove({ origins: sitePermissionPatterns(host) });
   await saveAllowedSites(nextSites, t("siteRemoved", host));
 }
 
@@ -541,14 +506,41 @@ async function saveAllowedSites(nextSites, successMessage = "") {
   await saveSettingsPatch({ allowedSites: nextSites }, successMessage);
 }
 
+function sitePermissionPatterns(host) {
+  return [
+    `http://${host}/*`,
+    `https://${host}/*`,
+    `http://*.${host}/*`,
+    `https://*.${host}/*`
+  ];
+}
+
+async function ensureSitePermission(host) {
+  const origins = sitePermissionPatterns(host);
+  if (await chrome.permissions.contains({ origins })) {
+    return true;
+  }
+  return chrome.permissions.request({ origins });
+}
+
 async function addAllowedSite(rawValue) {
   const host = normalizeAllowedSiteInput(rawValue);
   if (!host) {
     setMessage(t("siteInvalid"), "warn");
     return;
   }
+  let granted = false;
+  try {
+    granted = await ensureSitePermission(host);
+  } catch {
+    granted = false;
+  }
+  if (!granted) {
+    setMessage(t("sitePermissionDenied"), "warn");
+    return;
+  }
   if (allowedSites().includes(host)) {
-    setMessage(t("siteExists"), "warn");
+    setMessage(t("siteAdded", host), "success");
     return;
   }
   await saveAllowedSites([...allowedSites(), host], t("siteAdded", host));

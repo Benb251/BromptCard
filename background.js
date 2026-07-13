@@ -9,19 +9,32 @@ import { AnalysisError } from "./lib/schema.js";
 import { analyzeWithProvider, statusForProvider } from "./automation/orchestrator.js";
 import { getSettings, saveSettings, isUrlAllowed, getModeById } from "./storage.js";
 import { ensureAllowed, consume, getQuota, QuotaError } from "./lib/entitlement.js";
-import { syncProStatus, activateLicense, removeLicense, licenseInfo } from "./lib/billing.js";
 
-const RESET_TOKEN = "reset-2026-06-01";
+const RESET_TOKEN = "reset-2026-07-13";
 const RESET_TOKEN_KEY = "pcResetToken";
+const CONTENT_SCRIPT_ID = "bromptcard-content";
+const CONTENT_EXCLUDE_MATCHES = [
+  "https://gemini.google.com/*",
+  "https://accounts.google.com/*",
+  "https://*.accounts.google.com/*",
+  "https://oauth.googleusercontent.com/*",
+  "https://*.oauth.googleusercontent.com/*",
+  "https://checkout.link.com/*",
+  "https://*.checkout.link.com/*",
+  "https://checkout.stripe.com/*",
+  "https://*.checkout.stripe.com/*",
+  "https://buy.stripe.com/*",
+  "https://*.buy.stripe.com/*",
+  "https://billing.stripe.com/*",
+  "https://*.billing.stripe.com/*",
+  "https://pay.stripe.com/*",
+  "https://*.pay.stripe.com/*"
+];
 
 const RESETTABLE_DEFAULTS = {
   provider: null,
   language: null,
-  allowedSites: ["pinterest.com"],
-  pcPro: false,
-  pcUsage: null,
-  pcLicenseKey: null,
-  pcLicenseState: null
+  allowedSites: ["pinterest.com"]
 };
 
 const BG_I18N = {
@@ -31,9 +44,6 @@ const BG_I18N = {
     menuScreenshot: "BromptCard · Cắt ảnh màn hình",
     siteDisabled: "BromptCard đang tắt trên website này. Hãy thêm site trong popup trước.",
     analysisFailed: "Phân tích thất bại.",
-    activateLicenseFailed: "Không thể kích hoạt license.",
-    removeLicenseFailed: "Không thể gỡ license.",
-    licenseInfoFailed: "Không thể đọc thông tin license.",
     quotaReadFailed: "Không thể đọc quota.",
     providerStatusFailed: "Không thể đọc trạng thái provider.",
     saveSettingsFailed: "Không thể lưu cài đặt.",
@@ -47,9 +57,6 @@ const BG_I18N = {
     menuScreenshot: "BromptCard · Screenshot crop",
     siteDisabled: "BromptCard is disabled on this site. Add the site in the popup first.",
     analysisFailed: "Analysis failed.",
-    activateLicenseFailed: "Could not activate the license.",
-    removeLicenseFailed: "Could not remove the license.",
-    licenseInfoFailed: "Could not read license info.",
     quotaReadFailed: "Could not read quota.",
     providerStatusFailed: "Could not read provider status.",
     saveSettingsFailed: "Could not save settings.",
@@ -137,6 +144,25 @@ async function createContextMenu() {
   });
 }
 
+async function registerContentScript() {
+  const settings = await getSettings();
+  const matches = allowedSitePatterns(settings.allowedSites);
+  try {
+    await chrome.scripting.unregisterContentScripts({ ids: [CONTENT_SCRIPT_ID] });
+  } catch {
+    /* The script is not registered yet. */
+  }
+  if (!matches.length) return;
+  await chrome.scripting.registerContentScripts([{
+    id: CONTENT_SCRIPT_ID,
+    matches,
+    excludeMatches: CONTENT_EXCLUDE_MATCHES,
+    js: ["content.js"],
+    runAt: "document_idle",
+    persistAcrossSessions: true
+  }]);
+}
+
 async function sendToTab(tabId, message) {
   return chrome.tabs.sendMessage(tabId, message);
 }
@@ -174,8 +200,8 @@ async function captureVisibleTab(windowId) {
   if (typeof resolvedId !== "number") {
     throw new Error("Could not resolve the window to capture.");
   }
-  // Requires host permission for the page URL (see host_permissions <all_urls>),
-  // or activeTab from a browser-action / context-menu user gesture.
+  // Requires the selected site's optional host permission, or activeTab from a
+  // browser-action / context-menu user gesture.
   return chrome.tabs.captureVisibleTab(resolvedId, { format: "png" });
 }
 
@@ -186,17 +212,17 @@ function ok(sendResponse, data) {
 chrome.runtime.onInstalled.addListener(() => {
   resetDefaultsOnce();
   createContextMenu();
-  syncProStatus();
+  registerContentScript();
 });
 chrome.runtime.onStartup.addListener(() => {
   resetDefaultsOnce();
   createContextMenu();
-  syncProStatus();
+  registerContentScript();
 });
 
 resetDefaultsOnce();
-syncProStatus();
 createContextMenu();
+registerContentScript();
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (!tab?.id) {
@@ -290,44 +316,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message?.type === "PROMPTCARD_ACTIVATE_LICENSE") {
-    (async () => {
-      try {
-        const result = await activateLicense(message.payload?.key);
-        const quota = await getQuota();
-        const info = await licenseInfo();
-        ok(sendResponse, { result, quota, license: info });
-      } catch (error) {
-        sendResponse({ ok: false, error: error instanceof Error ? error.message : bgT("en", "activateLicenseFailed") });
-      }
-    })();
-    return true;
-  }
-
-  if (message?.type === "PROMPTCARD_REMOVE_LICENSE") {
-    (async () => {
-      try {
-        await removeLicense();
-        ok(sendResponse, { quota: await getQuota(), license: await licenseInfo() });
-      } catch (error) {
-        sendResponse({ ok: false, error: error instanceof Error ? error.message : bgT("en", "removeLicenseFailed") });
-      }
-    })();
-    return true;
-  }
-
-  if (message?.type === "PROMPTCARD_LICENSE_INFO") {
-    (async () => {
-      try {
-        await syncProStatus();
-        ok(sendResponse, { quota: await getQuota(), license: await licenseInfo() });
-      } catch (error) {
-        sendResponse({ ok: false, error: error instanceof Error ? error.message : bgT("en", "licenseInfoFailed") });
-      }
-    })();
-    return true;
-  }
-
   if (message?.type === "PROMPTCARD_GET_QUOTA") {
     (async () => {
       try {
@@ -363,6 +351,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       try {
         const settings = await saveSettings(message.payload || {});
         await createContextMenu();
+        await registerContentScript();
         ok(sendResponse, { settings });
       } catch (error) {
         sendResponse({ ok: false, error: error instanceof Error ? error.message : bgT("en", "saveSettingsFailed") });

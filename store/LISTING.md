@@ -48,14 +48,12 @@ FEATURES
 - One-click copy.
 
 PRICING
-- Faithful is always free and unlimited.
-- Style and future modes share 10 free uses per day.
-- Pro unlocks unlimited use.
+- All current modes are free and unlimited.
 
 PRIVACY
-BromptCard does not run a backend and does not collect your data. The only external destination is Google Gemini, through the tab you already opened. See the privacy policy for details.
+BromptCard does not run a developer backend. It processes the image you choose, the current site's URL/host, the Gemini response, and local settings/history to provide the feature. Analysis input is sent only to Google Gemini through the tab you already opened. See the privacy policy for details.
 
-Note: BromptCard automates a Gemini web tab you are signed into, for personal use. Gemini quality and availability are controlled by Google.
+Note: BromptCard automates a Gemini web tab you are signed into. It is not affiliated with, endorsed by, or produced by Google. Gemini quality and availability are controlled by Google.
 
 ---
 
@@ -92,9 +90,7 @@ TÍNH NĂNG
 - Sao chép một chạm.
 
 GIÁ
-- Faithful luôn miễn phí, không giới hạn.
-- Style và các chế độ tương lai dùng chung 10 lượt miễn phí mỗi ngày.
-- Pro mở khóa không giới hạn.
+- Tất cả chế độ hiện tại đều miễn phí và không giới hạn.
 
 QUYỀN RIÊNG TƯ
 BromptCard không chạy backend và không thu thập dữ liệu. Điểm đến bên ngoài duy nhất là Google Gemini, thông qua tab bạn đã mở. Xem chính sách quyền riêng tư để biết chi tiết.
@@ -109,7 +105,7 @@ Lưu ý: BromptCard tự động hóa tab web Gemini mà bạn đã đăng nhậ
 - `activeTab` + `scripting`: inject the in-page panel and drive the Gemini tab to deliver the image and read the reply.
 - `tabs`: find or open the user's Gemini tab in the background and inspect the active tab for enabled-site checks.
 - `storage`: save settings, enabled-site list, and local history on the device.
-- `host_permissions` (`http`/`https`): the extension can work on the sites the user chooses to enable; `gemini.google.com` access is required to deliver the image to the user's Gemini session.
+- `optional_host_permissions` (`http`/`https`): the extension requests access only when the user enables a site; `gemini.google.com` access is required to deliver the image to the user's Gemini session.
 - Single purpose: turn an image the user selects into a text prompt.
 
 ## Keywords / tags

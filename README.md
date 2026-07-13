@@ -5,14 +5,14 @@ Chrome Extension (MV3) that turns images into structured Vietnamese + English pr
 ## How it works
 
 1. Open a Gemini Gem tab and sign in normally.
-2. Enable one or more websites in the popup (default: `pinterest.com`).
+2. Enable one or more websites in the popup and approve Chrome's per-site access request (default: `pinterest.com`).
 3. On an enabled site, right-click an image and pick a mode (Faithful / Style / custom), or use screenshot crop / optional hover chips.
 4. BromptCard extracts the image, automates your Gem tab (paste → send → read), and parses the structured reply into the in-page panel.
 
 ## Site allowlist
 
 - Enabled on `pinterest.com` by default.
-- Paste a full URL or domain in the popup to add more sites.
+- Paste a full URL or domain in the popup to add more sites. Chrome asks for access only to that site.
 - Subdomains are covered automatically.
 
 ## Backend

@@ -23,7 +23,7 @@
 - Bạn có thể dán full URL hoặc chỉ domain. Ví dụ thêm `behance.net` sẽ áp dụng cho cả `www.behance.net`.
 - Ngoài danh sách website được bật, tiện ích sẽ không hiện nút nổi hay panel để tránh gây phiền.
 - Giữ tab Gemini luôn đăng nhập. Nếu không thấy ô nhập, tiện ích sẽ báo tab chưa sẵn sàng.
-- Faithful miễn phí không giới hạn. Style dùng chung 10 lượt miễn phí mỗi ngày.
+- Tất cả chế độ hiện tại đều miễn phí và không giới hạn.
 - Vì cài thủ công nên tiện ích sẽ không tự cập nhật. Khi có bản mới, tải lại zip và lặp lại bước cài.
 - Mọi dữ liệu như lịch sử và cài đặt được lưu cục bộ trên máy bạn.
 
@@ -52,6 +52,6 @@
 - You can paste a full URL or just a domain. For example, enabling `behance.net` also covers `www.behance.net`.
 - Outside the enabled-site list, BromptCard stays quiet and does not show floating actions or the panel.
 - Keep the Gemini tab signed in. If the input box is missing, the extension reports that the tab is not ready.
-- Faithful is free and unlimited. Style shares 10 free uses per day.
+- All current modes are free and unlimited.
 - Because this is a manual install, the extension will not auto-update. For new versions, download the new zip and repeat the install steps.
 - All data, including history and settings, stays locally on your device.

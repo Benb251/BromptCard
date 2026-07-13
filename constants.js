@@ -1,8 +1,3 @@
-// Billing / license paywall removed — all modes free & unlimited.
-export const LICENSE_API_BASE = "";
-export const PURCHASE_URL = "";
-export const LICENSE_RECHECK_MS = 24 * 60 * 60 * 1000;
-
 export const MENU_ID = "promptcard-mvp-analyze-image";
 export const MENU_ROOT_ID = "brompt-root";
 export const MENU_SCREENSHOT_ID = "brompt-screenshot";
