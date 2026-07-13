@@ -325,6 +325,86 @@ export function injectedAutomation(config) {
     }
   }
 
+  function attachmentState(editor) {
+    const scope =
+      editor.closest("rich-textarea")?.parentElement?.parentElement ||
+      editor.closest("form") ||
+      editor.parentElement ||
+      document.body;
+    const attachmentSelectors = [
+      "[data-test-id*='attachment' i]",
+      "[data-test-id*='upload' i]",
+      "[data-testid*='attachment' i]",
+      "[data-testid*='upload' i]",
+      "[aria-label*='Remove attachment' i]",
+      "[aria-label*='Remove image' i]",
+      "[aria-label*='Xóa tệp' i]",
+      "[aria-label*='Xóa ảnh' i]",
+      "file-preview",
+      "uploaded-file"
+    ];
+    const nodes = [];
+    for (const selector of attachmentSelectors) {
+      for (const node of scope.querySelectorAll(selector)) {
+        if (isVisible(node)) nodes.push(node);
+      }
+    }
+    const unique = [...new Set(nodes)];
+    const text = (scope.innerText || scope.textContent || "").replace(/\s+/g, " ").trim();
+    const busy = /uploading|processing|preparing|đang tải|đang xử lý/i.test(text) ||
+      Boolean(scope.querySelector("[role='progressbar'], mat-progress-bar, .progress-bar"));
+    const signature = unique
+      .map((node) => `${node.tagName}:${node.getAttribute("aria-label") || ""}:${node.textContent || ""}`)
+      .join("|");
+    return { count: unique.length, busy, signature };
+  }
+
+  async function waitForAttachmentReady(editor, before, timing, diag) {
+    const deadline = Date.now() + (timing.attachmentWaitMs || 15000);
+    let lastSignature = "";
+    let stableSince = Date.now();
+    let sawAttachment = false;
+    for (;;) {
+      const current = attachmentState(editor);
+      const changed = current.count > before.count || current.signature !== before.signature;
+      sawAttachment = sawAttachment || changed;
+      if (current.signature !== lastSignature) {
+        lastSignature = current.signature;
+        stableSince = Date.now();
+      }
+      const stable = Date.now() - stableSince >= (timing.attachmentStableMs || 1200);
+      if (!current.busy && stable && (sawAttachment || Date.now() + 1800 >= deadline)) {
+        diag.attachmentFound = sawAttachment;
+        diag.attachmentBusy = false;
+        return true;
+      }
+      if (Date.now() > deadline) {
+        diag.attachmentFound = sawAttachment;
+        diag.attachmentBusy = current.busy;
+        return !current.busy;
+      }
+      await sleep(timing.pollMs || 300);
+    }
+  }
+
+  function pressEnter(editor) {
+    try {
+      editor.focus();
+      for (const type of ["keydown", "keypress", "keyup"]) {
+        editor.dispatchEvent(new KeyboardEvent(type, {
+          key: "Enter",
+          code: "Enter",
+          keyCode: 13,
+          which: 13,
+          bubbles: true,
+          cancelable: true
+        }));
+      }
+    } catch {
+      /* fallback attempts are best effort */
+    }
+  }
+
   function isStatusOnlyText(text) {
     const clean = String(text || "")
       .replace(/\s+/g, " ")
@@ -416,6 +496,9 @@ export function injectedAutomation(config) {
       editorText: 0,
       sendFound: false,
       sawGenerating: false,
+      attachmentFound: false,
+      attachmentBusy: false,
+      sendAttempts: 0,
       hidden: typeof document !== "undefined" ? document.hidden : null,
       visibility: typeof document !== "undefined" ? document.visibilityState : null,
       hasFocus: typeof document !== "undefined" ? document.hasFocus() : null
@@ -448,7 +531,9 @@ export function injectedAutomation(config) {
 
     if (!skipImage && base64) {
       const blob = base64ToBlob(base64, mimeType);
+      const beforeAttachment = attachmentState(editor);
       await pasteImage(editor, blob);
+      await waitForAttachmentReady(editor, beforeAttachment, timing, diag);
       await sleep(timing.uploadSettleMs);
     }
 
@@ -493,16 +578,44 @@ export function injectedAutomation(config) {
     diag.sendFound = true;
 
     const previousResponseText = latestResponseText();
-    clickButton(sendButton);
+    const sendStarted = () => findButton(selectors.stopButton, selectors.stopIcons) || responseStarted(previousResponseText);
+    try {
+      sendButton.focus({ preventScroll: true });
+      sendButton.click();
+    } catch {
+      clickButton(sendButton);
+    }
+    diag.sendAttempts = 1;
 
-    const startMarker = await waitFor(
-      () => findButton(selectors.stopButton, selectors.stopIcons) || responseStarted(previousResponseText),
-      timing.responseStartMs,
+    let startMarker = await waitFor(
+      sendStarted,
+      timing.sendConfirmMs || 5000,
       timing.pollMs
     );
     if (!startMarker) {
-      return { ok: false, error: "NO_RESPONSE", message: "The provider did not start generating a response.", diag };
+      // Some Gemini variants ignore the native activation but accept the
+      // full pointer sequence or Enter from the composer.
+      clickButton(sendButton);
+      pressEnter(editor);
+      diag.sendAttempts = 2;
+      startMarker = await waitFor(
+        sendStarted,
+        Math.max(1000, timing.responseStartMs - (timing.sendConfirmMs || 5000)),
+        timing.pollMs
+      );
     }
+
+    if (!startMarker) {
+      return {
+        ok: false,
+        error: "NO_RESPONSE",
+        message: "Gemini did not confirm the send action. The image may still be processing, or this Gemini UI ignored automated send events.",
+        diag
+      };
+    }
+
+    // A stop button or changed model response confirms the request left the
+    // composer. Continue with the existing response-stability loop below.
     diag.sawGenerating = true;
 
     let lastText = "";

@@ -22,7 +22,9 @@ function diagSuffix(diag) {
   const steps = [
     `editor:${diag.editorFound ? "yes" : "no"}`,
     `text:${diag.editorText || 0}/${diag.expectedText || 0}`,
+    `attachment:${diag.attachmentFound ? "yes" : "no"}${diag.attachmentBusy ? ":busy" : ""}`,
     `send:${diag.sendFound ? "yes" : "no"}`,
+    `attempts:${diag.sendAttempts || 0}`,
     `gen:${diag.sawGenerating ? "yes" : "no"}`
   ];
   return ` [${steps.join(" ")}]`;

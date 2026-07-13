@@ -44,7 +44,10 @@ export const GEMINI_TIMING = {
   totalTimeoutMs: 180000,
   editorWaitMs: 15000,
   uploadSettleMs: 4000,
+  attachmentWaitMs: 15000,
+  attachmentStableMs: 1200,
   sendWaitMs: 30000,
+  sendConfirmMs: 5000,
   responseStartMs: 25000,
   pollMs: 600,
   stableMs: 2200
