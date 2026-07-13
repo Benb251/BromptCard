@@ -105,7 +105,7 @@ Lưu ý: BromptCard tự động hóa tab web Gemini mà bạn đã đăng nhậ
 - `activeTab` + `scripting`: inject the in-page panel and drive the Gemini tab to deliver the image and read the reply.
 - `tabs`: find or open the user's Gemini tab in the background and inspect the active tab for enabled-site checks.
 - `storage`: save settings, enabled-site list, and local history on the device.
-- `host_permissions`: `gemini.google.com` is required to deliver the image to the user's Gemini session; Pinterest is included because it is the default supported site and the extension fetches the image the user selects there.
+- `host_permissions`: `gemini.google.com` is required to deliver the image to the user's Gemini session; Pinterest and `i.pinimg.com` are included because Pinterest is the default supported site and the extension fetches the image the user selects there.
 - `optional_host_permissions` (`http`/`https`): the extension requests access only when the user enables an additional site.
 - Single purpose: turn an image the user selects into a text prompt.
 

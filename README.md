@@ -11,7 +11,7 @@ Chrome Extension (MV3) that turns images into structured Vietnamese + English pr
 
 ## Site allowlist
 
-- Enabled on `pinterest.com` by default, with install-time access required for its image workflow.
+- Enabled on `pinterest.com` by default, with install-time access to Pinterest and its image CDN required for its image workflow.
 - Paste a full URL or domain in the popup to add more sites. Chrome asks for access only to that additional site.
 - Subdomains are covered automatically.
 
