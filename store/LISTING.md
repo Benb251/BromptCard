@@ -26,8 +26,8 @@ HOW IT WORKS
 2. Open the BromptCard popup.
 3. Enable the websites where you want BromptCard to work. `pinterest.com` is enabled by default.
 4. On an enabled site, right-click an image or hover it.
-5. Click Faithful or Style.
-6. BromptCard sends the image to your Gemini tab in the background and reads the structured reply.
+5. Click Faithful, Style, or your custom Gem mode.
+6. BromptCard opens or reuses the correct Gemini Gem tab, temporarily keeps it active in a compact window while paste/send/read completes, then restores your source tab.
 
 SITE CONTROL
 - BromptCard does not stay active on every page.
@@ -35,9 +35,10 @@ SITE CONTROL
 - Subdomains are covered automatically.
 - Outside the enabled-site list, the floating buttons and panel stay quiet.
 
-TWO MODES
-- Faithful: reconstructs the image into a faithful, reproduction-ready prompt in Vietnamese and English. Always free.
+BUILT-IN MODES + CUSTOM GEMS
+- Faithful: reconstructs the image into a faithful, reproduction-ready prompt in Vietnamese and English.
 - Style: extracts the transferable visual style (medium, shape language, lighting logic, palette, finish) plus a ready-to-use [SUBJECT] transfer prompt and negative prompt.
+- Custom Gem Modes: add your own Gemini Gems in the popup/settings and map fields to custom structured JSON or raw prompts.
 
 FEATURES
 - Vietnamese + English output side by side.
@@ -68,8 +69,8 @@ CÁCH DÙNG
 2. Mở popup của BromptCard.
 3. Bật các website bạn muốn dùng. `pinterest.com` được bật mặc định.
 4. Trên một site đã bật, chuột phải vào ảnh hoặc di chuột lên ảnh.
-5. Bấm Faithful hoặc Style.
-6. BromptCard gửi ảnh vào tab Gemini ở chế độ nền và đọc kết quả có cấu trúc.
+5. Bấm Faithful, Style, hoặc custom Gem mode của bạn.
+6. BromptCard mở hoặc tái sử dụng đúng tab Gemini Gem, giữ tab hiển thị trong cửa sổ nhỏ gọn trong lúc gửi ảnh và đọc phản hồi, sau đó khôi phục tab gốc của bạn.
 
 KIỂM SOÁT WEBSITE
 - BromptCard không hoạt động ồn ào trên mọi trang nữa.
@@ -77,9 +78,10 @@ KIỂM SOÁT WEBSITE
 - Subdomain được áp dụng tự động.
 - Ngoài danh sách website được bật, nút nổi và panel sẽ giữ im lặng.
 
-HAI CHẾ ĐỘ
-- Faithful: tái tạo ảnh thành prompt trung thực, sẵn sàng tái dựng, bằng tiếng Việt và tiếng Anh. Luôn miễn phí.
+CÁC CHẾ ĐỘ MẶC ĐỊNH + CUSTOM GEMS
+- Faithful: tái tạo ảnh thành prompt trung thực, sẵn sàng tái dựng, bằng tiếng Việt và tiếng Anh.
 - Style: trích xuất phong cách thị giác có thể chuyển giao (chất liệu, ngôn ngữ hình khối, logic ánh sáng, bảng màu, độ hoàn thiện) kèm prompt chuyển phong cách dạng [SUBJECT] và negative prompt.
+- Custom Gem Modes: thêm các Gemini Gem riêng của bạn trong popup/cài đặt và map field thành Custom JSON hoặc prompt tự do.
 
 TÍNH NĂNG
 - Kết quả tiếng Việt + tiếng Anh song song.
@@ -103,7 +105,7 @@ Lưu ý: BromptCard tự động hóa tab web Gemini mà bạn đã đăng nhậ
 
 - `contextMenus`: add the right-click action on images on sites the user enabled.
 - `activeTab` + `scripting`: inject the in-page panel and drive the Gemini tab to deliver the image and read the reply.
-- `tabs`: find or open the user's Gemini tab in the background and inspect the active tab for enabled-site checks.
+- `tabs`: find or open the user's Gemini Gem tab in a compact window during analysis and inspect the active tab for enabled-site checks.
 - `storage`: save settings, enabled-site list, and local history on the device.
 - `host_permissions`: `gemini.google.com` is required to deliver the image to the user's Gemini session; Pinterest and `i.pinimg.com` are included because Pinterest is the default supported site and the extension fetches the image the user selects there.
 - `optional_host_permissions` (`http`/`https`): the extension requests access only when the user enables an additional site.

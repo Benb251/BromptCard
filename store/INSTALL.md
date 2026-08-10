@@ -3,7 +3,7 @@
 ## Tiếng Việt
 
 ### Cài đặt
-1. Tải file `BromptCard-0.2.0.zip` và giải nén. Bạn sẽ có thư mục `BromptCard`.
+1. Tải file `BromptCard-0.3.1.zip` và giải nén. Bạn sẽ có thư mục `BromptCard`.
 2. Mở Chrome (hoặc Edge/Brave) và vào `chrome://extensions`.
 3. Bật `Chế độ dành cho nhà phát triển` (Developer mode) ở góc trên phải.
 4. Bấm `Tải tiện ích đã giải nén` (Load unpacked).
@@ -32,7 +32,7 @@
 ## English
 
 ### Install
-1. Download `BromptCard-0.2.0.zip` and unzip it. You will get a `BromptCard` folder.
+1. Download `BromptCard-0.3.1.zip` and unzip it. You will get a `BromptCard` folder.
 2. Open Chrome (or Edge/Brave) and go to `chrome://extensions`.
 3. Turn on `Developer mode` (top right).
 4. Click `Load unpacked`.
