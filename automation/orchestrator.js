@@ -36,6 +36,16 @@ function diagSuffix(diag) {
   return ` [${steps.join(" ")}]`;
 }
 
+function matchesProvider(provider, url) {
+  if (!url) {
+    return false;
+  }
+  return provider.urlPatterns.some((pattern) => {
+    const regex = new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}$`);
+    return regex.test(url);
+  });
+}
+
 function extractGemPathFromUrl(url) {
   if (!url || typeof url !== "string") {
     return null;
