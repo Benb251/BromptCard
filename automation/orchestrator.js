@@ -191,6 +191,50 @@ async function getAllOtherModeGemPaths(provider) {
   return Array.from(identities);
 }
 
+async function finalizeResolvedProviderIdentity(provider, actualGemPath, tab) {
+  if (!actualGemPath || typeof actualGemPath !== "string") {
+    await forgetProviderTab(provider);
+    throw new AnalysisError(
+      `Could not determine Gem identity for ${provider.name}.`,
+      "PROVIDER_TAB_FAILED"
+    );
+  }
+
+  // 1. Collision validation MUST run for ALL resolved identities (including when actualGemPath === configuredPath!)
+  const otherIdentities = await getAllOtherModeIdentities(provider);
+  if (otherIdentities.has(actualGemPath)) {
+    await forgetProviderTab(provider);
+    throw new AnalysisError(
+      `Gemini resolved ${provider.name} to a Gem belonging to another configured mode.`,
+      "GEM_IDENTITY_COLLISION"
+    );
+  }
+
+  // 2. Canonical change validation
+  const configuredPath = provider.gemPath || extractGemPathFromMatchUrl(provider.matchUrl);
+  const existingCanonical = await getValidCanonicalGemPath(provider);
+
+  if (existingCanonical && existingCanonical !== actualGemPath && configuredPath !== actualGemPath) {
+    await forgetProviderTab(provider);
+    throw new AnalysisError(
+      `Canonical Gem identity changed for ${provider.name}. Please verify the Gem URL.`,
+      "GEM_CANONICAL_CHANGED"
+    );
+  }
+
+  // 3. Learn canonical mapping if resolved ID differs from configured ID and is not already cached
+  if (provider.id && provider.gemPath && actualGemPath !== configuredPath && actualGemPath !== existingCanonical) {
+    await chrome.storage.local.set({
+      [providerGemIdentityKey(provider.id)]: {
+        configuredGemPath: provider.gemPath,
+        canonicalGemPath: actualGemPath
+      }
+    });
+  }
+
+  return tab;
+}
+
 /** Resolves the stable runtime Gem path after BromptCard navigation to homeUrl, checking collisions and learning canonical mapping. */
 async function resolveAndLearnProviderIdentityAfterNavigation(provider, tabId, timeoutMs = READY_TIMEOUT_MS) {
   const deadline = Date.now() + timeoutMs;
@@ -224,49 +268,13 @@ async function resolveAndLearnProviderIdentityAfterNavigation(provider, tabId, t
       }
 
       if (consecutiveMatches >= 2 || (tab.status === "complete" && Date.now() + 1000 > deadline)) {
-        // Stable Gem path observed!
-        const configuredPath = provider.gemPath || extractGemPathFromMatchUrl(provider.matchUrl);
-        if (actualGemPath === configuredPath) {
-          return tab;
-        }
-
-        // Check other mode collisions before learning
-        const otherIdentities = await getAllOtherModeIdentities(provider);
-        if (otherIdentities.has(actualGemPath)) {
-          await forgetProviderTab(provider);
-          throw new AnalysisError(
-            `Gemini resolved ${provider.name} to a Gem belonging to another configured mode.`,
-            "GEM_IDENTITY_COLLISION"
-          );
-        }
-
-        // Check canonical mapping change
-        const existingCanonical = await getValidCanonicalGemPath(provider);
-        if (existingCanonical && existingCanonical !== actualGemPath) {
-          await forgetProviderTab(provider);
-          throw new AnalysisError(
-            `Canonical Gem identity changed for ${provider.name}. Please verify the Gem URL.`,
-            "GEM_CANONICAL_CHANGED"
-          );
-        }
-
-        // Learn and store canonical mapping
-        if (provider.id && provider.gemPath) {
-          await chrome.storage.local.set({
-            [providerGemIdentityKey(provider.id)]: {
-              configuredGemPath: provider.gemPath,
-              canonicalGemPath: actualGemPath
-            }
-          });
-        }
-        return tab;
+        // Stable Gem path observed! Pass through central finalization!
+        return await finalizeResolvedProviderIdentity(provider, actualGemPath, tab);
       }
     }
 
     if (Date.now() > deadline) {
-      if (isGemConversationTab(tab) && actualGemPath) {
-        return tab;
-      }
+      // Timeout reached without a stable finalized identity
       await forgetProviderTab(provider);
       throw new AnalysisError(
         `Gemini tab redirected away from ${provider.name}.`,
@@ -330,6 +338,13 @@ async function acquireProviderTab(provider) {
     return true;
   });
 
+  const SEMANTIC_ERRORS = new Set([
+    "GEM_IDENTITY_COLLISION",
+    "GEM_CANONICAL_CHANGED",
+    "PROVIDER_SIGNIN_REQUIRED",
+    "GEM_IDENTITY_MISMATCH"
+  ]);
+
   if (reusableCandidates.length === 1) {
     const candidate = reusableCandidates[0];
     try {
@@ -338,7 +353,10 @@ async function acquireProviderTab(provider) {
       const updatedTab = await resolveAndLearnProviderIdentityAfterNavigation(provider, candidate.id, READY_TIMEOUT_MS);
       await rememberProviderTab(provider, updatedTab.id);
       return { tab: updatedTab, openedHere: false };
-    } catch {
+    } catch (error) {
+      if (error instanceof AnalysisError && SEMANTIC_ERRORS.has(error.code)) {
+        throw error;
+      }
       /* navigation or tab get failed, fall back to new tab */
     }
   }
