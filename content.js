@@ -34,25 +34,16 @@
     );
   }
 
-  // Default: no valid context point.
-  // On reinjection: recover the coordinate from the previous script instance if it is
-  // still fresh (< 15 s old).  A stale coordinate is treated as absent so we never
-  // pass fake (0,0) to findImageAtPoint().
+  // On reinjection: recover the coordinate from the previous script instance.
+  // The page DOM (including custom data attributes) survives extension reload across
+  // isolated worlds — the isolated-world window global does NOT.
+  // A stale coordinate (> 15 s old) is treated as absent so we never pass fake
+  // (0,0) to findImageAtPoint().
   let lastContextPoint = null;
   {
     const FRESHNESS_MS = 15_000;
-    const prev = window.__promptCardMvpLastContextPoint;
-    // [PC-DIAG] Init: check whether isolated-world window global survived reinjection
-    const domHost = document.getElementById(ROOT_ID);
     const domMarker = document.getElementById("promptcard-context-state");
-    console.info(
-      "[PC-DIAG] init",
-      "window.__promptCardMvpLastContextPoint:", prev,
-      "| ROOT_ID dom host exists:", !!domHost,
-      "| promptcard-context-state marker exists:", !!domMarker,
-      "| marker attrs:", domMarker ? {x: domMarker.dataset.x, y: domMarker.dataset.y, at: domMarker.dataset.at} : null,
-      "| url:", document.URL
-    );
+    const prev = window.__promptCardMvpLastContextPoint;
     if (
       prev &&
       Number.isFinite(prev.x) &&
@@ -60,20 +51,16 @@
       Number.isFinite(prev.at) &&
       Date.now() - prev.at <= FRESHNESS_MS
     ) {
+      // Same script instance (no reinject): window global is still alive.
       lastContextPoint = { x: prev.x, y: prev.y, at: prev.at };
-      console.info("[PC-DIAG] init: recovered from window global:", lastContextPoint);
     } else if (domMarker) {
+      // After extension reload/reinjection: DOM marker persists in the page DOM.
       const mx = Number(domMarker.dataset.x);
       const my = Number(domMarker.dataset.y);
       const mat = Number(domMarker.dataset.at);
       if (Number.isFinite(mx) && Number.isFinite(my) && Number.isFinite(mat) && Date.now() - mat <= FRESHNESS_MS) {
         lastContextPoint = { x: mx, y: my, at: mat };
-        console.info("[PC-DIAG] init: recovered from DOM marker:", lastContextPoint);
-      } else {
-        console.info("[PC-DIAG] init: DOM marker exists but stale/invalid. data:", domMarker.dataset);
       }
-    } else {
-      console.info("[PC-DIAG] init: no recovery source — lastContextPoint stays null");
     }
   }
   const panelOffset = { x: 0, y: 0 };
@@ -2419,7 +2406,8 @@
     }
 
     // Determine a valid context point.
-    // Prefer the payload coordinate, then the in-memory lastContextPoint.
+    // Prefer the payload coordinate, then the in-memory lastContextPoint (which may
+    // have been recovered from the DOM marker after extension reload/reinjection).
     // Treat (0,0) as absent — never pass a fabricated origin to findImageAtPoint.
     let x = null;
     let y = null;
@@ -2432,51 +2420,21 @@
       y = lastContextPoint.y;
     }
 
-    // [PC-DIAG] resolveContextImage
-    {
-      const imgs = Array.from(document.images);
-      const usableAtPoint = x !== null ? imgs.filter(img => {
-        if (!(img instanceof HTMLImageElement) || !img.isConnected || !(img.currentSrc || img.src)) return false;
-        const r = img.getBoundingClientRect();
-        if (r.width < 24 || r.height < 24 || r.width * r.height < 800) return false;
-        const st = window.getComputedStyle(img);
-        if (st.visibility === 'hidden' || st.display === 'none' || Number(st.opacity) === 0) return false;
-        return x >= r.left - 2 && x <= r.right + 2 && y >= r.top - 2 && y <= r.bottom + 2;
-      }) : [];
-      const topEls = x !== null ? document.elementsFromPoint(x, y).slice(0, 6).map(e => e.tagName + (e.id ? '#'+e.id : '') + (e.className && typeof e.className === 'string' ? '.'+e.className.trim().split(/\s+/).slice(0,3).join('.') : '')) : [];
-      console.info(
-        "[PC-DIAG] resolveContextImage",
-        "payload.clientX/Y:", payload.clientX, payload.clientY,
-        "| inMemory lastContextPoint:", lastContextPoint,
-        "| resolved x/y:", x, y,
-        "| validPoint:", x !== null,
-        "| usable imgs at point:", usableAtPoint.length,
-        usableAtPoint.length > 0 ? usableAtPoint.map(i => ({src: i.currentSrc.slice(-60), w: Math.round(i.getBoundingClientRect().width), h: Math.round(i.getBoundingClientRect().height)})) : [],
-        "| top elementsFromPoint:", topEls,
-        "| linkUrl:", payload.linkUrl ? payload.linkUrl.slice(0, 80) : null
-      );
-    }
-
     if (x !== null) {
       const atPoint = findImageAtPoint(x, y, { forHover: false });
       if (atPoint) {
-        console.info("[PC-DIAG] resolveContextImage: resolved via findImageAtPoint:", atPoint.currentSrc.slice(-60));
         return atPoint;
       }
       if (payload.linkUrl) {
-        const fromLink = findImageNearLink(payload.linkUrl, x, y);
-        console.info("[PC-DIAG] resolveContextImage: findImageNearLink result:", fromLink ? fromLink.currentSrc.slice(-60) : null);
-        return fromLink;
+        return findImageNearLink(payload.linkUrl, x, y);
       }
     } else if (payload.linkUrl) {
-      // No valid context point: still try link-local resolution without a spatial hint.
-      // findImageNearLink falls through to the anchor-img-largest fallback on its own.
-      const fromLink = findImageNearLink(payload.linkUrl, 0, 0);
-      console.info("[PC-DIAG] resolveContextImage: NO valid point — findImageNearLink(0,0) result:", fromLink ? fromLink.currentSrc.slice(-60) : null);
-      return fromLink;
+      // No valid context point at all: attempt link-local resolution without spatial hint.
+      // findImageNearLink will walk elementsFromPoint(0,0) and almost certainly return null —
+      // that is the correct safe behavior (fail visibly rather than pick a wrong image).
+      return findImageNearLink(payload.linkUrl, 0, 0);
     }
 
-    console.warn("[PC-DIAG] resolveContextImage: returned null — no valid point and no linkUrl");
     return null;
   }
 
@@ -3551,10 +3509,11 @@
   const onContextMenu = (event) => {
     const point = { x: event.clientX, y: event.clientY, at: Date.now() };
     lastContextPoint = point;
-    // Persist across reinjection: window global (isolated world, may be lost on reload).
+    // Keep window global for same-instance quick access (no overhead, no harm).
     window.__promptCardMvpLastContextPoint = point;
-    // DOM marker (page DOM survives extension reload — this is the reliable handoff).
-    // [PC-DIAG] also writes to DOM marker so init can check which survives.
+    // DOM marker: page DOM attributes survive extension reload across isolated worlds.
+    // The newly injected script reads this at init to recover the coordinate that was
+    // captured by the old (now-dead) script instance just before the context menu opened.
     try {
       let marker = document.getElementById("promptcard-context-state");
       if (!marker) {
@@ -3568,39 +3527,7 @@
       marker.dataset.y = String(point.y);
       marker.dataset.at = String(point.at);
     } catch {
-      /* ignore \u2014 diag only */
-    }
-    // [PC-DIAG] contextmenu diagnostics
-    {
-      const tgt = event.target;
-      const anchor = tgt && tgt.closest ? tgt.closest("a[href]") : null;
-      const imgs = Array.from(document.images);
-      const usableAtPoint = imgs.filter(img => {
-        if (!(img instanceof HTMLImageElement) || !img.isConnected || !(img.currentSrc || img.src)) return false;
-        const r = img.getBoundingClientRect();
-        if (r.width < 24 || r.height < 24 || r.width * r.height < 800) return false;
-        const st = window.getComputedStyle(img);
-        if (st.visibility === 'hidden' || st.display === 'none' || Number(st.opacity) === 0) return false;
-        return point.x >= r.left - 2 && point.x <= r.right + 2 && point.y >= r.top - 2 && point.y <= r.bottom + 2;
-      });
-      const topEls = document.elementsFromPoint(point.x, point.y).slice(0, 8).map(e => {
-        const tagName = e.tagName;
-        const id = e.id ? '#' + e.id : '';
-        const cls = typeof e.className === 'string' ? '.' + e.className.trim().split(/\s+/).slice(0,3).join('.') : '';
-        return tagName + id + cls;
-      });
-      console.info(
-        "[PC-DIAG] contextmenu",
-        "x:", point.x, "y:", point.y,
-        "| target:", tgt ? tgt.tagName : null,
-        "| target.class:", tgt && typeof tgt.className === 'string' ? tgt.className.trim().slice(0, 80) : '',
-        "| closest anchor href:", anchor ? anchor.href.slice(0, 100) : null,
-        "| BromptCard root in DOM:", !!document.getElementById(ROOT_ID),
-        "| promptcard-context-state in DOM:", !!document.getElementById('promptcard-context-state'),
-        "| usable imgs at point:", usableAtPoint.length,
-        usableAtPoint.length > 0 ? usableAtPoint.map(i => ({src: i.currentSrc.slice(-60), w: Math.round(i.getBoundingClientRect().width), h: Math.round(i.getBoundingClientRect().height)})) : [],
-        "| top elementsFromPoint:", topEls
-      );
+      /* ignore */
     }
   };
 
@@ -3711,13 +3638,6 @@
     if (message?.type !== "PROMPTCARD_OPEN_PANEL") {
       return false;
     }
-    // [PC-DIAG] OPEN_PANEL received — this is the newly injected script
-    console.info(
-      "[PC-DIAG] OPEN_PANEL received",
-      "| lastContextPoint in this instance:", lastContextPoint,
-      "| window.__promptCardMvpLastContextPoint:", window.__promptCardMvpLastContextPoint,
-      "| payload:", message.payload
-    );
 
     (async () => {
       try {
