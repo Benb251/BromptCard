@@ -60,6 +60,7 @@ export function createGeminiProvider(mode) {
     homeUrl: `https://gemini.google.com/gem/${mode.gemPath}?usp=sharing`,
     urlPatterns: ["https://gemini.google.com/*"],
     matchUrl: `gem/${mode.gemPath}`,
+    gemPath: mode.gemPath || "",
     sendPrompt: false,
     world: "MAIN",
     selectors: GEMINI_SELECTORS,

@@ -46,6 +46,16 @@ function matchesProvider(provider, url) {
   });
 }
 
+function matchesGemIdentity(provider, url) {
+  if (!url || typeof url !== "string") {
+    return false;
+  }
+  if (provider.matchUrl) {
+    return url.includes(provider.matchUrl);
+  }
+  return matchesProvider(provider, url);
+}
+
 function isGemConversationTab(tab) {
   return /^https:\/\/gemini\.google\.com\/gem\//.test(tab?.url || "");
 }
@@ -67,7 +77,7 @@ async function getRememberedProviderTab(provider) {
 
   try {
     const tab = await chrome.tabs.get(tabId);
-    if (!matchesProvider(provider, tab.url)) {
+    if (!matchesGemIdentity(provider, tab.url)) {
       await forgetProviderTab(provider);
       return null;
     }
@@ -91,37 +101,76 @@ async function getRememberedOtherProviderTabIds(provider) {
   return new Set(Object.values(stored).filter((value) => Number.isInteger(value)));
 }
 
-async function findProviderTab(provider) {
+async function getAllOtherModeMatchUrls(provider) {
+  const settings = await getSettings();
+  return settings.gemModes
+    .filter((item) => item.id !== provider.id && item.gemPath)
+    .map((item) => `gem/${item.gemPath}`);
+}
+
+/** Non-destructive exact tab discovery for status checks and preference. */
+async function findExactProviderTab(provider) {
   const remembered = await getRememberedProviderTab(provider);
   if (remembered) {
     return remembered;
   }
 
   const tabs = await chrome.tabs.query({});
+  const exact = tabs.find((tab) => matchesGemIdentity(provider, tab.url));
+  if (exact?.id) {
+    await rememberProviderTab(provider, exact.id);
+    return exact;
+  }
+
+  return null;
+}
+
+/** Tab acquisition for analysis — uses exact tab, or safely navigates a single generic candidate, or creates a new tab. */
+async function acquireProviderTab(provider) {
+  const exact = await findExactProviderTab(provider);
+  if (exact) {
+    return { tab: exact, openedHere: false };
+  }
+
+  const tabs = await chrome.tabs.query({});
   const matching = tabs.filter((tab) => matchesProvider(provider, tab.url));
-  if (provider.matchUrl) {
-    const exact = matching.find((tab) => (tab.url || "").includes(provider.matchUrl));
-    if (exact) {
-      await rememberProviderTab(provider, exact.id);
-      return exact;
-    }
+  const rememberedOtherTabIds = await getRememberedOtherProviderTabIds(provider);
+  const otherMatchUrls = await getAllOtherModeMatchUrls(provider);
 
-    const rememberedOtherTabIds = await getRememberedOtherProviderTabIds(provider);
-    const reusableGemTabs = matching.filter(
-      (tab) => tab.id && isGemConversationTab(tab) && !rememberedOtherTabIds.has(tab.id)
-    );
-    if (reusableGemTabs.length === 1) {
-      await rememberProviderTab(provider, reusableGemTabs[0].id);
-      return reusableGemTabs[0];
+  const reusableCandidates = matching.filter((tab) => {
+    if (!tab?.id || !tab?.url) {
+      return false;
     }
-    return null;
+    if (rememberedOtherTabIds.has(tab.id)) {
+      return false;
+    }
+    if (otherMatchUrls.some((matchUrl) => tab.url.includes(matchUrl))) {
+      return false;
+    }
+    if (matchesGemIdentity(provider, tab.url)) {
+      return false;
+    }
+    return true;
+  });
+
+  if (reusableCandidates.length === 1) {
+    const candidate = reusableCandidates[0];
+    try {
+      await chrome.tabs.update(candidate.id, { url: provider.homeUrl });
+      await ensureTabReady(candidate.id, READY_TIMEOUT_MS);
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const updatedTab = await chrome.tabs.get(candidate.id);
+      if (matchesGemIdentity(provider, updatedTab.url)) {
+        await rememberProviderTab(provider, updatedTab.id);
+        return { tab: updatedTab, openedHere: false };
+      }
+    } catch {
+      /* navigation or tab get failed, fall back to new tab */
+    }
   }
 
-  const fallback = matching[0] || null;
-  if (fallback?.id) {
-    await rememberProviderTab(provider, fallback.id);
-  }
-  return fallback;
+  const opened = await openProviderTab(provider);
+  return { tab: opened, openedHere: true };
 }
 
 async function ensureTabReady(tabId, timeoutMs) {
@@ -142,8 +191,18 @@ async function openProviderTab(provider) {
   const tab = await chrome.tabs.create({ url: provider.homeUrl, active: false });
   await ensureTabReady(tab.id, READY_TIMEOUT_MS);
   await new Promise((resolve) => setTimeout(resolve, 2000));
-  await rememberProviderTab(provider, tab.id);
-  return tab;
+  const loadedTab = await chrome.tabs.get(tab.id);
+  if (!matchesGemIdentity(provider, loadedTab.url)) {
+    await forgetProviderTab(provider);
+    const isSignin = /accounts\.google\.com/i.test(loadedTab.url || "");
+    const hint = isSignin ? " Please sign in to Gemini and try again." : "";
+    throw new AnalysisError(
+      `Gemini tab redirected away from ${provider.name}.` + hint,
+      "PROVIDER_TAB_FAILED"
+    );
+  }
+  await rememberProviderTab(provider, loadedTab.id);
+  return loadedTab;
 }
 
 async function activateTab(tabId) {
@@ -506,7 +565,7 @@ async function statusForGemini(providerId) {
   const settings = await getSettings();
   const mode = getModeById(settings.gemModes, providerId);
   const provider = createProviderFromMode(mode);
-  const tab = await findProviderTab(provider);
+  const tab = await findExactProviderTab(provider);
   return {
     providerId: provider.id,
     providerName: provider.name,
@@ -525,18 +584,16 @@ async function analyzeWithGemini(providerId, target, sourceTabId) {
   const provider = createProviderFromMode(selectedMode);
   const payload = await imageTargetToPayload(target);
 
-  let tab = await findProviderTab(provider);
-  let openedHere = false;
-  if (!tab) {
-    tab = await openProviderTab(provider);
-    openedHere = true;
-  } else {
-    await ensureTabReady(tab.id, READY_TIMEOUT_MS);
-    await rememberProviderTab(provider, tab.id);
+  const { tab, openedHere } = await acquireProviderTab(provider);
+
+  if (!tab?.id || !matchesGemIdentity(provider, tab.url)) {
+    throw new AnalysisError(`Could not open or find valid Gem tab for ${provider.name}.`, "GEM_IDENTITY_MISMATCH");
   }
 
-  if (!tab?.id) {
-    throw new AnalysisError(`Could not open ${provider.name}.`, "PROVIDER_TAB_FAILED");
+  // Pre-automation final identity guard (Requirement E)
+  const currentTab = await chrome.tabs.get(tab.id);
+  if (!matchesGemIdentity(provider, currentTab.url)) {
+    throw new AnalysisError(`Tab URL changed and no longer matches ${provider.name}.`, "GEM_IDENTITY_MISMATCH");
   }
 
   const baseConfig = {
