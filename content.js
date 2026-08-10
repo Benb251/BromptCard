@@ -355,25 +355,16 @@
       return;
     }
 
-    if (existing && existing.shadowRoot) {
-      root = existing;
-      shadow = existing.shadowRoot;
-      if (!root.isConnected && document.documentElement) {
-        document.documentElement.appendChild(root);
-      }
-      return;
-    }
-
-    if (existing && !existing.shadowRoot) {
-      existing.remove();
-      existing = null;
-    }
-
     if (root && !root.isConnected) {
       if (document.documentElement) {
         document.documentElement.appendChild(root);
       }
       return;
+    }
+
+    if (existing) {
+      existing.remove();
+      existing = null;
     }
 
     if (!document.documentElement) {
@@ -3092,96 +3083,110 @@
     renderHistory();
   }
 
-  if (!window.__promptCardMvpListenersAttached) {
-    window.__promptCardMvpListenersAttached = true;
+  const onContextMenu = (event) => {
+    lastContextPoint = { x: event.clientX, y: event.clientY };
+  };
 
-    document.addEventListener(
-      "contextmenu",
-      (event) => {
-        lastContextPoint = { x: event.clientX, y: event.clientY };
-      },
-      true
-    );
-
-    document.addEventListener(
-      "pointermove",
-      (event) => {
-        ensureRoot();
-        if (!state.siteAllowed) {
-          hideHoverMenu();
-          return;
-        }
-        // Hover Faithful/Style chips are optional (settings.hoverActionsEnabled).
-        if (!state.overlayEnabled) {
-          hideHoverMenu();
-          return;
-        }
-        if (isPointOverPanel(event.clientX, event.clientY)) {
-          hideHoverMenu();
-          return;
-        }
-        const image = findImageAtPoint(event.clientX, event.clientY);
-        const hoverMenu = shadow?.querySelector(".hover-menu");
-        if (!image) {
-          if (hoverMenu && hoverMenu.matches(":hover")) {
-            return;
-          }
-          hideHoverMenu();
-          return;
-        }
-        showHoverMenuForImage(image);
-      },
-      true
-    );
-
-    document.addEventListener(
-      "scroll",
-      () => {
-        if (!state.siteAllowed) {
-          return;
-        }
-        if (hoveredImage) {
-          showHoverMenuForImage(hoveredImage);
-        }
-      },
-      true
-    );
-
-    window.addEventListener("resize", () => {
-      if (!state.siteAllowed) {
+  const onPointerMove = (event) => {
+    ensureRoot();
+    if (!state.siteAllowed) {
+      hideHoverMenu();
+      return;
+    }
+    // Hover Faithful/Style chips are optional (settings.hoverActionsEnabled).
+    if (!state.overlayEnabled) {
+      hideHoverMenu();
+      return;
+    }
+    if (isPointOverPanel(event.clientX, event.clientY)) {
+      hideHoverMenu();
+      return;
+    }
+    const image = findImageAtPoint(event.clientX, event.clientY);
+    const hoverMenu = shadow?.querySelector(".hover-menu");
+    if (!image) {
+      if (hoverMenu && hoverMenu.matches(":hover")) {
         return;
       }
-      if (hoveredImage) {
-        showHoverMenuForImage(hoveredImage);
-      }
-      if (state.siteAllowed && (!state.panelOpen || state.minimized)) {
-        applyDockPos();
-      }
-    });
+      hideHoverMenu();
+      return;
+    }
+    showHoverMenuForImage(image);
+  };
 
-    if (isExtensionAlive()) {
-      try {
-        chrome.storage.onChanged.addListener((changes, areaName) => {
-          if (areaName !== "local") {
-            return;
-          }
-          if (changes[ALLOWED_SITES_KEY]) {
-            state.siteAllowed = isCurrentSiteAllowed(changes[ALLOWED_SITES_KEY].newValue);
-            if (!state.siteAllowed) {
-              hideHoverMenu();
-              state.panelOpen = false;
-              state.minimized = false;
-            }
-          }
-          if (SETTINGS_KEYS.some((key) => changes[key])) {
-            refreshRuntimeSettings().then(render);
-            return;
-          }
-          render();
-        });
-      } catch {
-        /* ignore */
+  const onScroll = () => {
+    if (!state.siteAllowed) {
+      return;
+    }
+    if (hoveredImage) {
+      showHoverMenuForImage(hoveredImage);
+    }
+  };
+
+  const onResize = () => {
+    if (!state.siteAllowed) {
+      return;
+    }
+    if (hoveredImage) {
+      showHoverMenuForImage(hoveredImage);
+    }
+    if (state.siteAllowed && (!state.panelOpen || state.minimized)) {
+      applyDockPos();
+    }
+  };
+
+  const onStorageChanged = (changes, areaName) => {
+    if (areaName !== "local") {
+      return;
+    }
+    if (changes[ALLOWED_SITES_KEY]) {
+      state.siteAllowed = isCurrentSiteAllowed(changes[ALLOWED_SITES_KEY].newValue);
+      if (!state.siteAllowed) {
+        hideHoverMenu();
+        state.panelOpen = false;
+        state.minimized = false;
       }
+    }
+    if (SETTINGS_KEYS.some((key) => changes[key])) {
+      refreshRuntimeSettings().then(render);
+      return;
+    }
+    render();
+  };
+
+  if (window.__promptCardMvpHandlers) {
+    const prev = window.__promptCardMvpHandlers;
+    try {
+      document.removeEventListener("contextmenu", prev.onContextMenu, true);
+      document.removeEventListener("pointermove", prev.onPointerMove, true);
+      document.removeEventListener("scroll", prev.onScroll, true);
+      window.removeEventListener("resize", prev.onResize);
+      if (prev.onStorageChanged && typeof chrome?.storage?.onChanged?.removeListener === "function") {
+        chrome.storage.onChanged.removeListener(prev.onStorageChanged);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  window.__promptCardMvpHandlers = {
+    onContextMenu,
+    onPointerMove,
+    onScroll,
+    onResize,
+    onStorageChanged
+  };
+
+  document.addEventListener("contextmenu", onContextMenu, true);
+  document.addEventListener("pointermove", onPointerMove, true);
+  document.addEventListener("scroll", onScroll, true);
+  window.addEventListener("resize", onResize);
+
+  if (isExtensionAlive()) {
+    try {
+      chrome.storage.onChanged.addListener(onStorageChanged);
+    } catch {
+      /* ignore */
     }
   }
 
