@@ -2126,6 +2126,12 @@
       }
     }
 
+    if (!best && !forHover) {
+      for (const img of document.images) {
+        consider(img);
+      }
+    }
+
     return best;
   }
 
