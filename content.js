@@ -19,8 +19,39 @@
   let historyLoaded = false;
   let dockTrayOpen = false;
   let resultExpanded = false;
-  /** Last right-click point — used when context menu is on a pin link, not the img itself. */
-  let lastContextPoint = { x: 0, y: 0 };
+  /** Last right-click point — used when context menu is on a pin link, not the img itself.
+   * Persisted on window.__promptCardMvpLastContextPoint so that the coordinate survives
+   * content-script reinjection (extension reload without a page refresh).
+   * Type: {x: number, y: number, at: number} | null
+   */
+  function validContextPoint(value) {
+    return (
+      value !== null &&
+      value !== undefined &&
+      Number.isFinite(value.x) &&
+      Number.isFinite(value.y) &&
+      (value.x !== 0 || value.y !== 0)
+    );
+  }
+
+  // Default: no valid context point.
+  // On reinjection: recover the coordinate from the previous script instance if it is
+  // still fresh (< 15 s old).  A stale coordinate is treated as absent so we never
+  // pass fake (0,0) to findImageAtPoint().
+  let lastContextPoint = null;
+  {
+    const FRESHNESS_MS = 15_000;
+    const prev = window.__promptCardMvpLastContextPoint;
+    if (
+      prev &&
+      Number.isFinite(prev.x) &&
+      Number.isFinite(prev.y) &&
+      Number.isFinite(prev.at) &&
+      Date.now() - prev.at <= FRESHNESS_MS
+    ) {
+      lastContextPoint = { x: prev.x, y: prev.y, at: prev.at };
+    }
+  }
   const panelOffset = { x: 0, y: 0 };
   const panelSize = { width: 0, height: 0 };
 
@@ -2362,15 +2393,35 @@
     if (payload.srcUrl) {
       return findImageBySrc(payload.srcUrl) || null;
     }
-    const x = Number.isFinite(payload.clientX) ? payload.clientX : lastContextPoint.x;
-    const y = Number.isFinite(payload.clientY) ? payload.clientY : lastContextPoint.y;
-    const atPoint = findImageAtPoint(x, y, { forHover: false });
-    if (atPoint) {
-      return atPoint;
+
+    // Determine a valid context point.
+    // Prefer the payload coordinate, then the in-memory lastContextPoint.
+    // Treat (0,0) as absent — never pass a fabricated origin to findImageAtPoint.
+    let x = null;
+    let y = null;
+    if (Number.isFinite(payload.clientX) && Number.isFinite(payload.clientY) &&
+        (payload.clientX !== 0 || payload.clientY !== 0)) {
+      x = payload.clientX;
+      y = payload.clientY;
+    } else if (validContextPoint(lastContextPoint)) {
+      x = lastContextPoint.x;
+      y = lastContextPoint.y;
     }
-    if (payload.linkUrl) {
-      return findImageNearLink(payload.linkUrl, x, y);
+
+    if (x !== null) {
+      const atPoint = findImageAtPoint(x, y, { forHover: false });
+      if (atPoint) {
+        return atPoint;
+      }
+      if (payload.linkUrl) {
+        return findImageNearLink(payload.linkUrl, x, y);
+      }
+    } else if (payload.linkUrl) {
+      // No valid context point: still try link-local resolution without a spatial hint.
+      // findImageNearLink falls through to the anchor-img-largest fallback on its own.
+      return findImageNearLink(payload.linkUrl, 0, 0);
     }
+
     return null;
   }
 
@@ -3443,7 +3494,10 @@
   }
 
   const onContextMenu = (event) => {
-    lastContextPoint = { x: event.clientX, y: event.clientY };
+    const point = { x: event.clientX, y: event.clientY, at: Date.now() };
+    lastContextPoint = point;
+    // Persist across reinjection: the newly injected script instance reads this back.
+    window.__promptCardMvpLastContextPoint = point;
   };
 
   const onPointerMove = (event) => {
@@ -3587,8 +3641,8 @@
           const resolved = resolveContextImage({
             srcUrl: payload.srcUrl,
             linkUrl: payload.linkUrl,
-            clientX: lastContextPoint.x,
-            clientY: lastContextPoint.y
+            clientX: validContextPoint(lastContextPoint) ? lastContextPoint.x : NaN,
+            clientY: validContextPoint(lastContextPoint) ? lastContextPoint.y : NaN
           });
           if (!resolved) {
             setState({
