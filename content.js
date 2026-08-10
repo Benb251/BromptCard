@@ -39,7 +39,6 @@
     minimized: false,
     // Synced with settings.hoverActionsEnabled (default off — avoids mis-clicks).
     overlayEnabled: false,
-    quota: null,
     siteAllowed: false,
     progress: 0,
     progressLabel: ""
@@ -69,9 +68,6 @@
       modeFaithful: "Faithful",
       modeStyle: "Style",
       hoverStyle: "Style",
-      quotaLeft: "Còn {n} lượt miễn phí hôm nay",
-      quotaPro: "Pro - không giới hạn",
-      quotaExhausted: "Đã hết lượt miễn phí hôm nay. Nâng cấp Pro để dùng tiếp.",
       styleLoading: "Đang trích xuất phong cách từ ảnh. Giữ tab Gemini Gem luôn đăng nhập.",
       styleTransfer: "Prompt chuyển phong cách",
       styleNegative: "Negative prompt",
@@ -125,9 +121,6 @@
       modeFaithful: "Faithful",
       modeStyle: "Style",
       hoverStyle: "Style",
-      quotaLeft: "{n} free uses left today",
-      quotaPro: "Pro - unlimited",
-      quotaExhausted: "Out of free uses today. Upgrade to Pro to continue.",
       styleLoading: "Extracting the visual style from the image. Keep the Gemini Gem tab signed in.",
       styleTransfer: "Style transfer prompt",
       styleNegative: "Negative prompt",
@@ -1393,29 +1386,6 @@
           height: 15px;
         }
 
-        .hover-quota {
-          margin-left: 2px;
-          min-width: 16px;
-          height: 16px;
-          padding: 0 5px;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 999px;
-          font: 700 10px/1 "Segoe UI Variable", "Segoe UI", sans-serif;
-          color: rgba(255, 255, 255, 0.96);
-          background: rgba(255, 255, 255, 0.22);
-        }
-
-        .hover-quota:empty {
-          display: none;
-        }
-
-        .hover-quota.is-out {
-          background: rgba(214, 78, 64, 0.95);
-        }
-
-
         .style-meta {
           display: flex;
           flex-wrap: wrap;
@@ -1940,21 +1910,6 @@
     render();
   }
 
-  async function refreshQuota() {
-    if (!isExtensionAlive()) {
-      return;
-    }
-    try {
-      const response = await sendMessageSafe({ type: "PROMPTCARD_GET_QUOTA" });
-      if (response?.ok && response.data?.quota) {
-        state.quota = response.data.quota;
-        render();
-      }
-    } catch {
-      /* quota display is best-effort */
-    }
-  }
-
   async function openPanel() {
     ensureRoot();
     await refreshRuntimeSettings();
@@ -1974,7 +1929,6 @@
     state.minimized = false;
     dockTrayOpen = false;
     render();
-    refreshQuota();
   }
 
   function minimizePanel() {
@@ -2506,12 +2460,7 @@
       if (!response?.ok) {
         const err = new Error(response?.error || t("analysisFailed"));
         err.code = response?.code;
-        err.quota = response?.quota || null;
         throw err;
-      }
-
-      if (response.data.quota) {
-        state.quota = response.data.quota;
       }
 
       finishProgress(true);
@@ -2527,10 +2476,6 @@
       render();
     } catch (error) {
       finishProgress(false);
-      const quota = error?.quota || null;
-      if (quota) {
-        state.quota = quota;
-      }
       setState({
         status: "error",
         error: error instanceof Error ? error.message : t("analysisFailed")
@@ -3031,10 +2976,6 @@
         }
       });
     });
-  }
-
-  function updateQuotaChip() {
-    /* paywall removed — no quota UI */
   }
 
   function render() {

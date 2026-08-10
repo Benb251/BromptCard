@@ -8,10 +8,7 @@ import {
 import { AnalysisError } from "./lib/schema.js";
 import { analyzeWithProvider, statusForProvider } from "./automation/orchestrator.js";
 import { getSettings, saveSettings, isUrlAllowed, getModeById } from "./storage.js";
-import { ensureAllowed, consume, getQuota, QuotaError } from "./lib/entitlement.js";
 
-const RESET_TOKEN = "reset-2026-07-13";
-const RESET_TOKEN_KEY = "pcResetToken";
 const CONTENT_SCRIPT_ID = "bromptcard-content";
 const CONTENT_EXCLUDE_MATCHES = [
   "https://gemini.google.com/*",
@@ -31,12 +28,6 @@ const CONTENT_EXCLUDE_MATCHES = [
   "https://*.pay.stripe.com/*"
 ];
 
-const RESETTABLE_DEFAULTS = {
-  provider: null,
-  language: null,
-  allowedSites: ["pinterest.com"]
-};
-
 const BG_I18N = {
   vi: {
     menuAnalyze: "Phân tích ảnh với BromptCard",
@@ -44,7 +35,6 @@ const BG_I18N = {
     menuScreenshot: "BromptCard · Cắt ảnh màn hình",
     siteDisabled: "BromptCard đang tắt trên website này. Hãy thêm site trong popup trước.",
     analysisFailed: "Phân tích thất bại.",
-    quotaReadFailed: "Không thể đọc quota.",
     providerStatusFailed: "Không thể đọc trạng thái provider.",
     saveSettingsFailed: "Không thể lưu cài đặt.",
     captureFailed: "Không thể chụp tab hiện tại.",
@@ -57,7 +47,6 @@ const BG_I18N = {
     menuScreenshot: "BromptCard · Screenshot crop",
     siteDisabled: "BromptCard is disabled on this site. Add the site in the popup first.",
     analysisFailed: "Analysis failed.",
-    quotaReadFailed: "Could not read quota.",
     providerStatusFailed: "Could not read provider status.",
     saveSettingsFailed: "Could not save settings.",
     captureFailed: "Could not capture the visible tab.",
@@ -69,22 +58,6 @@ const BG_I18N = {
 function bgT(language, key) {
   const lang = language === "en" ? "en" : "vi";
   return BG_I18N[lang][key] || BG_I18N.en[key] || key;
-}
-
-async function resetDefaultsOnce() {
-  try {
-    const stored = await chrome.storage.local.get(RESET_TOKEN_KEY);
-    if (stored[RESET_TOKEN_KEY] === RESET_TOKEN) {
-      return;
-    }
-    const nextState = { [RESET_TOKEN_KEY]: RESET_TOKEN };
-    for (const [key, value] of Object.entries(RESETTABLE_DEFAULTS)) {
-      nextState[key] = value;
-    }
-    await chrome.storage.local.set(nextState);
-  } catch {
-    /* ignore */
-  }
 }
 
 function allowedSitePatterns(allowedSites) {
@@ -210,17 +183,14 @@ function ok(sendResponse, data) {
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-  resetDefaultsOnce();
   createContextMenu();
   registerContentScript();
 });
 chrome.runtime.onStartup.addListener(() => {
-  resetDefaultsOnce();
   createContextMenu();
   registerContentScript();
 });
 
-resetDefaultsOnce();
 createContextMenu();
 registerContentScript();
 
@@ -287,41 +257,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           throw new Error(bgT(settings.language, "siteDisabled"));
         }
         const providerId = message.payload?.provider || settings.provider;
-        const selectedMode = getModeById(settings.gemModes, providerId);
-        const entitlementMode = selectedMode?.resultKind === "style" ? "style" : "analyze";
-        await ensureAllowed(entitlementMode);
         const analysis = await analyzeWithProvider(
           providerId,
           message.payload.target,
-          entitlementMode,
           sender.tab?.id ?? null
         );
-        await consume(entitlementMode);
-        const quota = await getQuota();
-        ok(sendResponse, { analysis, quota });
+        ok(sendResponse, { analysis });
       } catch (error) {
         sendResponse({
           ok: false,
           error: error instanceof Error ? error.message : bgT("en", "analysisFailed"),
-          code:
-            error instanceof QuotaError
-              ? error.code
-              : error instanceof AnalysisError
-                ? error.code
-                : "ANALYSIS_FAILED",
-          quota: error instanceof QuotaError ? error.quota : undefined
+          code: error instanceof AnalysisError ? error.code : "ANALYSIS_FAILED"
         });
-      }
-    })();
-    return true;
-  }
-
-  if (message?.type === "PROMPTCARD_GET_QUOTA") {
-    (async () => {
-      try {
-        ok(sendResponse, { quota: await getQuota() });
-      } catch (error) {
-        sendResponse({ ok: false, error: error instanceof Error ? error.message : bgT("en", "quotaReadFailed") });
       }
     })();
     return true;

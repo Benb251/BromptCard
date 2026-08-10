@@ -876,6 +876,6 @@ async function analyzeWithGemini(providerId, target, sourceTabId) {
   return parseModeResponse(result.text, selectedMode);
 }
 
-export async function analyzeWithProvider(providerId, target, _mode = "analyze", sourceTabId = null) {
+export async function analyzeWithProvider(providerId, target, sourceTabId = null) {
   return analyzeWithGemini(providerId, target, sourceTabId);
 }
