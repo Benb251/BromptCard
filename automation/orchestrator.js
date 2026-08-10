@@ -36,24 +36,41 @@ function diagSuffix(diag) {
   return ` [${steps.join(" ")}]`;
 }
 
-function matchesProvider(provider, url) {
-  if (!url) {
-    return false;
+function extractGemPathFromUrl(url) {
+  if (!url || typeof url !== "string") {
+    return null;
   }
-  return provider.urlPatterns.some((pattern) => {
-    const regex = new RegExp(`^${pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*")}$`);
-    return regex.test(url);
-  });
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    if (host !== "gemini.google.com" && host !== "www.gemini.google.com") {
+      return null;
+    }
+    const match = parsed.pathname.match(/^\/gem\/([^/]+)/);
+    if (match && match[1]) {
+      return decodeURIComponent(match[1]);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function extractGemPathFromMatchUrl(matchUrl) {
+  if (!matchUrl || typeof matchUrl !== "string") {
+    return "";
+  }
+  const match = matchUrl.match(/gem\/([^/]+)/);
+  return match ? match[1] : "";
 }
 
 function matchesGemIdentity(provider, url) {
-  if (!url || typeof url !== "string") {
-    return false;
+  const expectedGemPath = provider?.gemPath || extractGemPathFromMatchUrl(provider?.matchUrl);
+  if (!expectedGemPath) {
+    return matchesProvider(provider, url);
   }
-  if (provider.matchUrl) {
-    return url.includes(provider.matchUrl);
-  }
-  return matchesProvider(provider, url);
+  const actualGemPath = extractGemPathFromUrl(url);
+  return Boolean(actualGemPath && actualGemPath === expectedGemPath);
 }
 
 function isGemConversationTab(tab) {
@@ -101,14 +118,14 @@ async function getRememberedOtherProviderTabIds(provider) {
   return new Set(Object.values(stored).filter((value) => Number.isInteger(value)));
 }
 
-async function getAllOtherModeMatchUrls(provider) {
+async function getAllOtherModeGemPaths(provider) {
   const settings = await getSettings();
   return settings.gemModes
     .filter((item) => item.id !== provider.id && item.gemPath)
-    .map((item) => `gem/${item.gemPath}`);
+    .map((item) => item.gemPath);
 }
 
-/** Non-destructive exact tab discovery for status checks and preference. */
+/** Exact tab discovery for status checks and preference. Remembers exact tab if found. */
 async function findExactProviderTab(provider) {
   const remembered = await getRememberedProviderTab(provider);
   if (remembered) {
@@ -135,16 +152,21 @@ async function acquireProviderTab(provider) {
   const tabs = await chrome.tabs.query({});
   const matching = tabs.filter((tab) => matchesProvider(provider, tab.url));
   const rememberedOtherTabIds = await getRememberedOtherProviderTabIds(provider);
-  const otherMatchUrls = await getAllOtherModeMatchUrls(provider);
+  const otherGemPaths = await getAllOtherModeGemPaths(provider);
 
   const reusableCandidates = matching.filter((tab) => {
     if (!tab?.id || !tab?.url) {
       return false;
     }
+    // Must be a Gem conversation tab (/gem/...) - DO NOT hijack normal /app/... tabs (Finding 1)
+    if (!isGemConversationTab(tab)) {
+      return false;
+    }
     if (rememberedOtherTabIds.has(tab.id)) {
       return false;
     }
-    if (otherMatchUrls.some((matchUrl) => tab.url.includes(matchUrl))) {
+    const candidateGemPath = extractGemPathFromUrl(tab.url);
+    if (candidateGemPath && otherGemPaths.includes(candidateGemPath)) {
       return false;
     }
     if (matchesGemIdentity(provider, tab.url)) {
@@ -171,6 +193,26 @@ async function acquireProviderTab(provider) {
 
   const opened = await openProviderTab(provider);
   return { tab: opened, openedHere: true };
+}
+
+async function assertProviderTabIdentity(provider, tabId) {
+  if (!Number.isInteger(tabId)) {
+    throw new AnalysisError(`Invalid tab ID for ${provider.name}.`, "GEM_IDENTITY_MISMATCH");
+  }
+  let tab;
+  try {
+    tab = await chrome.tabs.get(tabId);
+  } catch {
+    throw new AnalysisError(`Tab for ${provider.name} was closed.`, "GEM_IDENTITY_MISMATCH");
+  }
+  if (!matchesGemIdentity(provider, tab?.url)) {
+    await forgetProviderTab(provider);
+    throw new AnalysisError(
+      `Tab URL changed and no longer matches ${provider.name}.`,
+      "GEM_IDENTITY_MISMATCH"
+    );
+  }
+  return tab;
 }
 
 async function ensureTabReady(tabId, timeoutMs) {
@@ -623,6 +665,9 @@ async function analyzeWithGemini(providerId, target, sourceTabId) {
     sourceWindowId = await prepareGeminiTabForAutomation(tab.id, sourceTabId);
     stopFocusKeeper = startGeminiFocusKeeper(tab.id, sourceWindowId);
 
+    // Guard immediately before FIRST runInTab attempt (Finding 3)
+    await assertProviderTabIdentity(provider, tab.id);
+
     result = await runInTab(tab.id, provider.world, {
       ...baseConfig,
       promptText
@@ -640,6 +685,10 @@ async function analyzeWithGemini(providerId, target, sourceTabId) {
         /* ignore */
       }
       await waitForGeminiComposerReady(tab.id, 12000);
+
+      // Guard immediately before RETRY runInTab attempt (Finding 3)
+      await assertProviderTabIdentity(provider, tab.id);
+
       result = await runInTab(tab.id, provider.world, {
         ...baseConfig,
         promptText
