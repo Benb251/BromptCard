@@ -2420,6 +2420,72 @@
       y = lastContextPoint.y;
     }
 
+    // [PC-DIAG2] Targeted diagnostic for normal-case failure
+    if (x !== null) {
+      const topEls = document.elementsFromPoint(x, y).slice(0, 8).map(e =>
+        e.tagName + (e.id ? '#'+e.id : '') + (typeof e.className === 'string' ? '.'+e.className.trim().split(/\s+/).slice(0,2).join('.') : '')
+      );
+      const allImgs = Array.from(document.images);
+      const imgsAtPoint = allImgs.filter(img => {
+        if (!img.isConnected || !(img.currentSrc || img.src)) return false;
+        const r = img.getBoundingClientRect();
+        return r.width >= 24 && r.height >= 24 && r.width*r.height >= 800 &&
+               x >= r.left-2 && x <= r.right+2 && y >= r.top-2 && y <= r.bottom+2;
+      });
+      const imgsAtPointDetail = imgsAtPoint.map(img => {
+        const r = img.getBoundingClientRect();
+        const st = window.getComputedStyle(img);
+        return {
+          src: img.currentSrc.slice(-50),
+          w: Math.round(r.width), h: Math.round(r.height),
+          vis: st.visibility, disp: st.display, op: st.opacity,
+          ptrevents: st.pointerEvents,
+          parent: img.parentElement ? img.parentElement.tagName : null
+        };
+      });
+      // Check anchor search for findImageNearLink
+      const linkUrl = payload.linkUrl;
+      let anchorFound = null;
+      let anchorImgs = [];
+      if (linkUrl) {
+        try {
+          const wanted = new URL(String(linkUrl), location.href).href;
+          const wantPath = new URL(wanted).pathname || "";
+          for (const el of document.elementsFromPoint(x, y)) {
+            if (!(el instanceof Element)) continue;
+            const anch = el.tagName === "A" ? el : el.closest && el.closest("a[href]");
+            if (!anch) continue;
+            const ahref = new URL(anch.href, location.href).href;
+            const apath = (() => { try { return new URL(ahref).pathname || ""; } catch { return ""; } })();
+            const same = ahref === wanted || ahref.split("?")[0] === wanted.split("?")[0] ||
+              (wantPath.length > 1 && (apath === wantPath || ahref.includes(wantPath)));
+            if (same) {
+              anchorFound = { tag: anch.tagName, href: ahref.slice(-80) };
+              anchorImgs = Array.from(anch.querySelectorAll("img")).map(i => ({
+                src: i.currentSrc.slice(-50), w: Math.round(i.getBoundingClientRect().width),
+                h: Math.round(i.getBoundingClientRect().height),
+                usable: !!i.isConnected && !!(i.currentSrc||i.src)
+              }));
+              break;
+            }
+          }
+        } catch { /* ignore */ }
+      }
+      console.info(
+        "[PC-DIAG2] resolveContextImage",
+        "x:", x, "y:", y,
+        "| lastContextPoint:", lastContextPoint,
+        "| top elementsFromPoint:", topEls,
+        "| total document.images:", allImgs.length,
+        "| usable imgs at point (rect check):", imgsAtPoint.length, imgsAtPointDetail,
+        "| linkUrl:", linkUrl ? linkUrl.slice(-60) : null,
+        "| anchor found:", anchorFound,
+        "| imgs in anchor:", anchorImgs
+      );
+    } else {
+      console.warn("[PC-DIAG2] resolveContextImage: no valid context point. lastContextPoint:", lastContextPoint, "payload.clientX/Y:", payload.clientX, payload.clientY);
+    }
+
     if (x !== null) {
       const atPoint = findImageAtPoint(x, y, { forHover: false });
       if (atPoint) {
