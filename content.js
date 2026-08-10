@@ -280,7 +280,7 @@
       .replace(/^www\./, "");
   }
 
-  function normalizeAllowedSites(value) {
+  function normalizeAllowedSites(value, { fallbackToDefault = true } = {}) {
     const list = Array.isArray(value) ? value : [];
     const seen = new Set();
     const output = [];
@@ -302,7 +302,10 @@
       seen.add(host);
       output.push(host);
     }
-    return output.length ? output : [...DEFAULT_ALLOWED_SITES];
+    if (output.length) {
+      return output;
+    }
+    return fallbackToDefault ? [...DEFAULT_ALLOWED_SITES] : [];
   }
 
   function currentHost() {
@@ -315,7 +318,10 @@
 
   function isCurrentSiteAllowed(allowedSites) {
     const host = currentHost();
-    const list = normalizeAllowedSites(allowedSites);
+    const list =
+      allowedSites === undefined || allowedSites === null
+        ? [...DEFAULT_ALLOWED_SITES]
+        : normalizeAllowedSites(allowedSites, { fallbackToDefault: false });
     return list.some((allowedHost) => host === allowedHost || host.endsWith(`.${allowedHost}`));
   }
 
