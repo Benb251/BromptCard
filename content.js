@@ -1,9 +1,4 @@
 (function () {
-  if (window.__promptCardMvpLoaded) {
-    return;
-  }
-  window.__promptCardMvpLoaded = true;
-
   const ROOT_ID = "promptcard-mvp-root";
   const HISTORY_KEY = "promptcardMvpHistory";
   const HISTORY_VISIBLE_KEY = "promptcardMvpHistoryVisible";
@@ -354,7 +349,34 @@
   }
 
   function ensureRoot() {
-    if (root) {
+    let existing = document.getElementById(ROOT_ID);
+
+    if (root && root.isConnected && existing === root && shadow) {
+      return;
+    }
+
+    if (existing && existing.shadowRoot) {
+      root = existing;
+      shadow = existing.shadowRoot;
+      if (!root.isConnected && document.documentElement) {
+        document.documentElement.appendChild(root);
+      }
+      return;
+    }
+
+    if (existing && !existing.shadowRoot) {
+      existing.remove();
+      existing = null;
+    }
+
+    if (root && !root.isConnected) {
+      if (document.documentElement) {
+        document.documentElement.appendChild(root);
+      }
+      return;
+    }
+
+    if (!document.documentElement) {
       return;
     }
 
@@ -3070,71 +3092,100 @@
     renderHistory();
   }
 
-  document.addEventListener(
-    "contextmenu",
-    (event) => {
-      lastContextPoint = { x: event.clientX, y: event.clientY };
-    },
-    true
-  );
+  if (!window.__promptCardMvpListenersAttached) {
+    window.__promptCardMvpListenersAttached = true;
 
-  document.addEventListener(
-    "pointermove",
-    (event) => {
-      ensureRoot();
-      if (!state.siteAllowed) {
-        hideHoverMenu();
-        return;
-      }
-      // Hover Faithful/Style chips are optional (settings.hoverActionsEnabled).
-      if (!state.overlayEnabled) {
-        hideHoverMenu();
-        return;
-      }
-      if (isPointOverPanel(event.clientX, event.clientY)) {
-        hideHoverMenu();
-        return;
-      }
-      const image = findImageAtPoint(event.clientX, event.clientY);
-      const hoverMenu = shadow.querySelector(".hover-menu");
-      if (!image) {
-        if (hoverMenu && hoverMenu.matches(":hover")) {
+    document.addEventListener(
+      "contextmenu",
+      (event) => {
+        lastContextPoint = { x: event.clientX, y: event.clientY };
+      },
+      true
+    );
+
+    document.addEventListener(
+      "pointermove",
+      (event) => {
+        ensureRoot();
+        if (!state.siteAllowed) {
+          hideHoverMenu();
           return;
         }
-        hideHoverMenu();
-        return;
-      }
-      showHoverMenuForImage(image);
-    },
-    true
-  );
+        // Hover Faithful/Style chips are optional (settings.hoverActionsEnabled).
+        if (!state.overlayEnabled) {
+          hideHoverMenu();
+          return;
+        }
+        if (isPointOverPanel(event.clientX, event.clientY)) {
+          hideHoverMenu();
+          return;
+        }
+        const image = findImageAtPoint(event.clientX, event.clientY);
+        const hoverMenu = shadow?.querySelector(".hover-menu");
+        if (!image) {
+          if (hoverMenu && hoverMenu.matches(":hover")) {
+            return;
+          }
+          hideHoverMenu();
+          return;
+        }
+        showHoverMenuForImage(image);
+      },
+      true
+    );
 
-  document.addEventListener(
-    "scroll",
-    () => {
+    document.addEventListener(
+      "scroll",
+      () => {
+        if (!state.siteAllowed) {
+          return;
+        }
+        if (hoveredImage) {
+          showHoverMenuForImage(hoveredImage);
+        }
+      },
+      true
+    );
+
+    window.addEventListener("resize", () => {
       if (!state.siteAllowed) {
         return;
       }
       if (hoveredImage) {
         showHoverMenuForImage(hoveredImage);
       }
-    },
-    true
-  );
+      if (state.siteAllowed && (!state.panelOpen || state.minimized)) {
+        applyDockPos();
+      }
+    });
 
-  window.addEventListener("resize", () => {
-    if (!state.siteAllowed) {
-      return;
+    if (isExtensionAlive()) {
+      try {
+        chrome.storage.onChanged.addListener((changes, areaName) => {
+          if (areaName !== "local") {
+            return;
+          }
+          if (changes[ALLOWED_SITES_KEY]) {
+            state.siteAllowed = isCurrentSiteAllowed(changes[ALLOWED_SITES_KEY].newValue);
+            if (!state.siteAllowed) {
+              hideHoverMenu();
+              state.panelOpen = false;
+              state.minimized = false;
+            }
+          }
+          if (SETTINGS_KEYS.some((key) => changes[key])) {
+            refreshRuntimeSettings().then(render);
+            return;
+          }
+          render();
+        });
+      } catch {
+        /* ignore */
+      }
     }
-    if (hoveredImage) {
-      showHoverMenuForImage(hoveredImage);
-    }
-    if (state.siteAllowed && (!state.panelOpen || state.minimized)) {
-      applyDockPos();
-    }
-  });
+  }
 
-  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  const onMessageHandler = (message, _sender, sendResponse) => {
     if (message?.type !== "PROMPTCARD_OPEN_PANEL") {
       return false;
     }
@@ -3195,26 +3246,23 @@
     })();
 
     return true;
-  });
+  };
 
-  chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== "local") {
-      return;
-    }
-    if (changes[ALLOWED_SITES_KEY]) {
-      state.siteAllowed = isCurrentSiteAllowed(changes[ALLOWED_SITES_KEY].newValue);
-      if (!state.siteAllowed) {
-        hideHoverMenu();
-        state.panelOpen = false;
-        state.minimized = false;
+  if (isExtensionAlive()) {
+    if (window.__promptCardMvpMessageListener) {
+      try {
+        chrome.runtime.onMessage.removeListener(window.__promptCardMvpMessageListener);
+      } catch {
+        /* ignore */
       }
     }
-    if (SETTINGS_KEYS.some((key) => changes[key])) {
-      refreshRuntimeSettings().then(render);
-      return;
+    window.__promptCardMvpMessageListener = onMessageHandler;
+    try {
+      chrome.runtime.onMessage.addListener(onMessageHandler);
+    } catch {
+      /* ignore */
     }
-    render();
-  });
+  }
 
   if (isExtensionAlive()) {
     Promise.all([
@@ -3237,5 +3285,6 @@
     render();
   }
 
+  window.__promptCardMvpLoaded = true;
   ensureRoot();
 })();
