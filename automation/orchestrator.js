@@ -74,13 +74,52 @@ function extractGemPathFromMatchUrl(matchUrl) {
   return match ? match[1] : "";
 }
 
-function matchesGemIdentity(provider, url) {
-  const expectedGemPath = provider?.gemPath || extractGemPathFromMatchUrl(provider?.matchUrl);
-  if (!expectedGemPath) {
-    return matchesProvider(provider, url);
+const PROVIDER_GEM_IDENTITY_PREFIX = "pcProviderGemIdentity:";
+
+function providerGemIdentityKey(providerId) {
+  return `${PROVIDER_GEM_IDENTITY_PREFIX}${providerId}`;
+}
+
+async function getValidCanonicalGemPath(provider) {
+  if (!provider?.id || !provider?.gemPath) {
+    return null;
   }
+  try {
+    const key = providerGemIdentityKey(provider.id);
+    const stored = await chrome.storage.local.get(key);
+    const record = stored[key];
+    if (record && typeof record === "object") {
+      if (record.configuredGemPath === provider.gemPath && typeof record.canonicalGemPath === "string") {
+        return record.canonicalGemPath;
+      }
+      // Configured gemPath changed for this mode ID: invalidate stale canonical record and remembered tab
+      await chrome.storage.local.remove(key);
+      await forgetProviderTab(provider);
+    }
+  } catch {
+    /* ignore storage errors */
+  }
+  return null;
+}
+
+function matchesGemIdentitySync(provider, url, canonicalGemPath = null) {
+  const expectedConfiguredPath = provider?.gemPath || extractGemPathFromMatchUrl(provider?.matchUrl);
   const actualGemPath = extractGemPathFromUrl(url);
-  return Boolean(actualGemPath && actualGemPath === expectedGemPath);
+  if (!actualGemPath) {
+    return false;
+  }
+  if (expectedConfiguredPath && actualGemPath === expectedConfiguredPath) {
+    return true;
+  }
+  if (canonicalGemPath && actualGemPath === canonicalGemPath) {
+    return true;
+  }
+  return false;
+}
+
+async function matchesGemIdentity(provider, url) {
+  const canonicalGemPath = await getValidCanonicalGemPath(provider);
+  return matchesGemIdentitySync(provider, url, canonicalGemPath);
 }
 
 function isGemConversationTab(tab) {
@@ -104,7 +143,7 @@ async function getRememberedProviderTab(provider) {
 
   try {
     const tab = await chrome.tabs.get(tabId);
-    if (!matchesGemIdentity(provider, tab.url)) {
+    if (!(await matchesGemIdentity(provider, tab.url))) {
       await forgetProviderTab(provider);
       return null;
     }
@@ -128,11 +167,115 @@ async function getRememberedOtherProviderTabIds(provider) {
   return new Set(Object.values(stored).filter((value) => Number.isInteger(value)));
 }
 
-async function getAllOtherModeGemPaths(provider) {
+async function getAllOtherModeIdentities(provider) {
   const settings = await getSettings();
-  return settings.gemModes
-    .filter((item) => item.id !== provider.id && item.gemPath)
-    .map((item) => item.gemPath);
+  const set = new Set();
+  for (const item of settings.gemModes) {
+    if (item.id !== provider.id) {
+      if (item.gemPath) {
+        set.add(item.gemPath);
+      }
+      const key = providerGemIdentityKey(item.id);
+      const stored = await chrome.storage.local.get(key);
+      const record = stored[key];
+      if (record && record.configuredGemPath === item.gemPath && record.canonicalGemPath) {
+        set.add(record.canonicalGemPath);
+      }
+    }
+  }
+  return set;
+}
+
+async function getAllOtherModeGemPaths(provider) {
+  const identities = await getAllOtherModeIdentities(provider);
+  return Array.from(identities);
+}
+
+/** Resolves the stable runtime Gem path after BromptCard navigation to homeUrl, checking collisions and learning canonical mapping. */
+async function resolveAndLearnProviderIdentityAfterNavigation(provider, tabId, timeoutMs = READY_TIMEOUT_MS) {
+  const deadline = Date.now() + timeoutMs;
+  let lastObservedGemPath = null;
+  let consecutiveMatches = 0;
+
+  for (;;) {
+    let tab;
+    try {
+      tab = await chrome.tabs.get(tabId);
+    } catch {
+      throw new AnalysisError(`Tab for ${provider.name} was closed during navigation.`, "PROVIDER_TAB_FAILED");
+    }
+
+    const currentUrl = tab.pendingUrl || tab.url || "";
+    if (/accounts\.google\.com/i.test(currentUrl)) {
+      await forgetProviderTab(provider);
+      throw new AnalysisError(
+        `Gemini redirected to sign in for ${provider.name}. Please sign in to Gemini and try again.`,
+        "PROVIDER_SIGNIN_REQUIRED"
+      );
+    }
+
+    const actualGemPath = extractGemPathFromUrl(currentUrl);
+    if (actualGemPath) {
+      if (actualGemPath === lastObservedGemPath && tab.status === "complete") {
+        consecutiveMatches++;
+      } else {
+        lastObservedGemPath = actualGemPath;
+        consecutiveMatches = 1;
+      }
+
+      if (consecutiveMatches >= 2 || (tab.status === "complete" && Date.now() + 1000 > deadline)) {
+        // Stable Gem path observed!
+        const configuredPath = provider.gemPath || extractGemPathFromMatchUrl(provider.matchUrl);
+        if (actualGemPath === configuredPath) {
+          return tab;
+        }
+
+        // Check other mode collisions before learning
+        const otherIdentities = await getAllOtherModeIdentities(provider);
+        if (otherIdentities.has(actualGemPath)) {
+          await forgetProviderTab(provider);
+          throw new AnalysisError(
+            `Gemini resolved ${provider.name} to a Gem belonging to another configured mode.`,
+            "GEM_IDENTITY_COLLISION"
+          );
+        }
+
+        // Check canonical mapping change
+        const existingCanonical = await getValidCanonicalGemPath(provider);
+        if (existingCanonical && existingCanonical !== actualGemPath) {
+          await forgetProviderTab(provider);
+          throw new AnalysisError(
+            `Canonical Gem identity changed for ${provider.name}. Please verify the Gem URL.`,
+            "GEM_CANONICAL_CHANGED"
+          );
+        }
+
+        // Learn and store canonical mapping
+        if (provider.id && provider.gemPath) {
+          await chrome.storage.local.set({
+            [providerGemIdentityKey(provider.id)]: {
+              configuredGemPath: provider.gemPath,
+              canonicalGemPath: actualGemPath
+            }
+          });
+        }
+        return tab;
+      }
+    }
+
+    if (Date.now() > deadline) {
+      if (isGemConversationTab(tab) && actualGemPath) {
+        return tab;
+      }
+      await forgetProviderTab(provider);
+      throw new AnalysisError(
+        `Gemini tab redirected away from ${provider.name}.`,
+        "PROVIDER_TAB_FAILED"
+      );
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
 }
 
 /** Exact tab discovery for status checks and preference. Remembers exact tab if found. */
@@ -142,8 +285,9 @@ async function findExactProviderTab(provider) {
     return remembered;
   }
 
+  const canonicalGemPath = await getValidCanonicalGemPath(provider);
   const tabs = await chrome.tabs.query({});
-  const exact = tabs.find((tab) => matchesGemIdentity(provider, tab.url));
+  const exact = tabs.find((tab) => matchesGemIdentitySync(provider, tab.url, canonicalGemPath));
   if (exact?.id) {
     await rememberProviderTab(provider, exact.id);
     return exact;
@@ -163,6 +307,7 @@ async function acquireProviderTab(provider) {
   const matching = tabs.filter((tab) => matchesProvider(provider, tab.url));
   const rememberedOtherTabIds = await getRememberedOtherProviderTabIds(provider);
   const otherGemPaths = await getAllOtherModeGemPaths(provider);
+  const canonicalGemPath = await getValidCanonicalGemPath(provider);
 
   const reusableCandidates = matching.filter((tab) => {
     if (!tab?.id || !tab?.url) {
@@ -179,7 +324,7 @@ async function acquireProviderTab(provider) {
     if (candidateGemPath && otherGemPaths.includes(candidateGemPath)) {
       return false;
     }
-    if (matchesGemIdentity(provider, tab.url)) {
+    if (matchesGemIdentitySync(provider, tab.url, canonicalGemPath)) {
       return false;
     }
     return true;
@@ -190,12 +335,9 @@ async function acquireProviderTab(provider) {
     try {
       await chrome.tabs.update(candidate.id, { url: provider.homeUrl });
       await ensureTabReady(candidate.id, READY_TIMEOUT_MS);
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      const updatedTab = await chrome.tabs.get(candidate.id);
-      if (matchesGemIdentity(provider, updatedTab.url)) {
-        await rememberProviderTab(provider, updatedTab.id);
-        return { tab: updatedTab, openedHere: false };
-      }
+      const updatedTab = await resolveAndLearnProviderIdentityAfterNavigation(provider, candidate.id, READY_TIMEOUT_MS);
+      await rememberProviderTab(provider, updatedTab.id);
+      return { tab: updatedTab, openedHere: false };
     } catch {
       /* navigation or tab get failed, fall back to new tab */
     }
@@ -215,7 +357,7 @@ async function assertProviderTabIdentity(provider, tabId) {
   } catch {
     throw new AnalysisError(`Tab for ${provider.name} was closed.`, "GEM_IDENTITY_MISMATCH");
   }
-  if (!matchesGemIdentity(provider, tab?.url)) {
+  if (!(await matchesGemIdentity(provider, tab?.url))) {
     await forgetProviderTab(provider);
     throw new AnalysisError(
       `Tab URL changed and no longer matches ${provider.name}.`,
@@ -242,17 +384,7 @@ async function ensureTabReady(tabId, timeoutMs) {
 async function openProviderTab(provider) {
   const tab = await chrome.tabs.create({ url: provider.homeUrl, active: false });
   await ensureTabReady(tab.id, READY_TIMEOUT_MS);
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-  const loadedTab = await chrome.tabs.get(tab.id);
-  if (!matchesGemIdentity(provider, loadedTab.url)) {
-    await forgetProviderTab(provider);
-    const isSignin = /accounts\.google\.com/i.test(loadedTab.url || "");
-    const hint = isSignin ? " Please sign in to Gemini and try again." : "";
-    throw new AnalysisError(
-      `Gemini tab redirected away from ${provider.name}.` + hint,
-      "PROVIDER_TAB_FAILED"
-    );
-  }
+  const loadedTab = await resolveAndLearnProviderIdentityAfterNavigation(provider, tab.id, READY_TIMEOUT_MS);
   await rememberProviderTab(provider, loadedTab.id);
   return loadedTab;
 }
