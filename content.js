@@ -3019,7 +3019,6 @@
     renderHoverButtons();
     applyStaticI18n();
     body.innerHTML = renderMainBody();
-    updateQuotaChip();
     copyButton.disabled = !state.result;
 
     shadow.querySelectorAll("[data-language]").forEach((button) => {
