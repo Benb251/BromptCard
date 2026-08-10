@@ -18,6 +18,7 @@
   let hoveredImage = null;
   let historyLoaded = false;
   let dockTrayOpen = false;
+  let resultExpanded = false;
   /** Last right-click point — used when context menu is on a pin link, not the img itself. */
   let lastContextPoint = { x: 0, y: 0 };
   const panelOffset = { x: 0, y: 0 };
@@ -98,7 +99,15 @@
       captureFailed: "Không thể chụp tab hiện tại.",
       loadShotFailed: "Không thể tải ảnh chụp màn hình.",
       cropFailed: "Không thể chuẩn bị vùng cắt.",
-      contextLost: "BromptCard vừa được tải lại. Hãy làm mới trang này (F5) để kết nối lại tiện ích."
+      contextLost: "BromptCard vừa được tải lại. Hãy làm mới trang này (F5) để kết nối lại tiện ích.",
+      promptReady: "Prompt sẵn sàng",
+      styleResultReady: "Kết quả phong cách sẵn sàng",
+      resultReady: "Kết quả sẵn sàng",
+      viewDetails: "Chi tiết",
+      collapseDetails: "Thu gọn",
+      downloadMd: "Tải .md",
+      downloadMdTitle: "Tải báo cáo Markdown (.md)",
+      characters: "ký tự"
     },
     en: {
       titleResult: "Analysis result",
@@ -151,7 +160,15 @@
       captureFailed: "Could not capture the visible tab.",
       loadShotFailed: "Could not load the screenshot.",
       cropFailed: "Could not prepare the screenshot crop.",
-      contextLost: "BromptCard was reloaded. Refresh this page (F5) to reconnect the extension."
+      contextLost: "BromptCard was reloaded. Refresh this page (F5) to reconnect the extension.",
+      promptReady: "Prompt ready",
+      styleResultReady: "Style result ready",
+      resultReady: "Result ready",
+      viewDetails: "View",
+      collapseDetails: "Collapse",
+      downloadMd: "Download .md",
+      downloadMdTitle: "Download Markdown report (.md)",
+      characters: "characters"
     }
   };
 
@@ -1442,6 +1459,125 @@
           color: rgba(255, 255, 255, 0.78);
         }
 
+        .compact-card {
+          padding: 16px 18px;
+          border-radius: 20px;
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+          margin-bottom: 12px;
+        }
+
+        .compact-card-header {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .compact-card-thumb {
+          width: 48px;
+          height: 48px;
+          flex: 0 0 48px;
+          border-radius: 12px;
+          overflow: hidden;
+          background: rgba(255, 255, 255, 0.16);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+        }
+
+        .compact-card-thumb img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+
+        .compact-card-info {
+          flex: 1 1 auto;
+          min-width: 0;
+        }
+
+        .compact-card-title {
+          font: 700 15px/1.2 "Segoe UI Variable", "Segoe UI", sans-serif;
+          color: rgba(255, 255, 255, 0.96);
+          margin-bottom: 4px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .compact-card-meta {
+          font-size: 12px;
+          color: rgba(255, 255, 255, 0.68);
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          flex-wrap: wrap;
+        }
+
+        .compact-card-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .compact-btn {
+          appearance: none;
+          border: 0;
+          height: 36px;
+          padding: 0 16px;
+          border-radius: 999px;
+          cursor: pointer;
+          font: 700 13px/1 "Segoe UI Variable", "Segoe UI", sans-serif;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          color: rgba(255, 255, 255, 0.92);
+          background: rgba(255, 255, 255, 0.12);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          transition: background 0.18s ease, transform 0.14s ease, color 0.18s ease;
+        }
+
+        .compact-btn:hover {
+          background: rgba(255, 255, 255, 0.2);
+          color: #ffffff;
+        }
+
+        .compact-btn:active {
+          transform: scale(0.96);
+        }
+
+        .compact-btn.primary {
+          color: #2c3035;
+          background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(243,245,247,0.94));
+          border: 0;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+        }
+
+        .compact-btn.primary:hover {
+          background: linear-gradient(180deg, #ffffff, #e9ecef);
+        }
+
+        .compact-btn.copied {
+          color: #ffffff;
+          background: linear-gradient(180deg, rgba(86, 196, 122, 0.98), rgba(58, 170, 96, 0.96));
+          border: 0;
+        }
+
+        .expanded-result-container {
+          margin-top: 10px;
+          padding-top: 14px;
+          border-top: 1px dashed rgba(255, 255, 255, 0.16);
+          animation: pc-fade-in 0.22s ease-out;
+        }
+
+        @keyframes pc-fade-in {
+          from { opacity: 0; transform: translateY(-4px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
       </style>
       <div class="overlay">
         <div class="workspace">
@@ -2320,24 +2456,29 @@
   let copyResetTimer = null;
 
   function flashCopyButton() {
-    const button = shadow.querySelector('[data-action="copy-result"]');
-    if (!button) {
+    const buttons = shadow.querySelectorAll('[data-action="copy-result"], [data-action="copy-compact"]');
+    if (!buttons.length) {
       return;
     }
-    button.classList.remove("copied");
-    // Force reflow so the animation restarts on rapid repeated clicks.
-    void button.offsetWidth;
-    const label = button.querySelector(".copy-label") || button;
-    const original = button.getAttribute("data-label-default") || label.textContent;
-    button.setAttribute("data-label-default", original);
-    button.classList.add("copied");
-    label.textContent = t("copiedLabel");
+    buttons.forEach((button) => {
+      button.classList.remove("copied");
+      void button.offsetWidth;
+      const label = button.querySelector(".copy-label") || button.querySelector(".copy-compact-label") || button;
+      const original = button.getAttribute("data-label-default") || label.textContent;
+      button.setAttribute("data-label-default", original);
+      button.classList.add("copied");
+      label.textContent = t("copiedLabel");
+    });
     if (copyResetTimer) {
       clearTimeout(copyResetTimer);
     }
     copyResetTimer = setTimeout(() => {
-      button.classList.remove("copied");
-      label.textContent = t("copy");
+      buttons.forEach((button) => {
+        button.classList.remove("copied");
+        const label = button.querySelector(".copy-label") || button.querySelector(".copy-compact-label") || button;
+        const original = button.getAttribute("data-label-default") || t("copy");
+        label.textContent = original;
+      });
       copyResetTimer = null;
     }, 1400);
   }
@@ -2442,6 +2583,8 @@
       });
       return;
     }
+
+    resultExpanded = false;
 
     await openPanel();
     const selectedMode = modeById(modeId);
@@ -2714,6 +2857,200 @@
     }
   }
 
+  function sanitizeFileName(name) {
+    return (name || "Result")
+      .replace(/[^\w\s-]/g, "")
+      .trim()
+      .replace(/\s+/g, "-") || "Result";
+  }
+
+  function formatTimestampForFile(date = new Date()) {
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    const hh = String(date.getHours()).padStart(2, "0");
+    const min = String(date.getMinutes()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}-${hh}${min}`;
+  }
+
+  function buildResultMarkdown(result, modeItem, target) {
+    if (!result) {
+      return "";
+    }
+    const modeName = modeItem?.name || "Result";
+    const lines = [];
+
+    lines.push(`# BromptCard — ${modeName}`);
+    lines.push("");
+
+    if (result.kind === "style") {
+      if (result.transfer_prompt) {
+        lines.push("## Transfer Prompt");
+        lines.push("");
+        lines.push(result.transfer_prompt.trim());
+        lines.push("");
+      }
+      if (result.negative_prompt) {
+        lines.push("## Negative Prompt");
+        lines.push("");
+        lines.push(result.negative_prompt.trim());
+        lines.push("");
+      }
+      if (Array.isArray(result.transfer_priority) && result.transfer_priority.length) {
+        lines.push("## Transfer Priority");
+        lines.push("");
+        for (const item of result.transfer_priority) {
+          if (item && String(item).trim()) {
+            lines.push(`- ${String(item).trim()}`);
+          }
+        }
+        lines.push("");
+      }
+      if (result.what_not_to_copy) {
+        lines.push("## What Not to Copy");
+        lines.push("");
+        lines.push(result.what_not_to_copy.trim());
+        lines.push("");
+      }
+      if (result.target_replacement_instructions) {
+        lines.push("## Target Replacement Instructions");
+        lines.push("");
+        lines.push(result.target_replacement_instructions.trim());
+        lines.push("");
+      }
+      if (result.style_family || result.content_domain) {
+        lines.push("## Metadata");
+        lines.push("");
+        if (result.style_family) {
+          lines.push(`- **Style Family**: ${result.style_family.trim()}`);
+        }
+        if (result.content_domain) {
+          lines.push(`- **Content Domain**: ${result.content_domain.trim()}`);
+        }
+        lines.push("");
+      }
+      const tags = Array.isArray(result.style_tags) ? result.style_tags : [];
+      if (tags.length) {
+        lines.push("## Tags");
+        lines.push("");
+        for (const tag of tags) {
+          if (tag && String(tag).trim()) {
+            lines.push(`- ${String(tag).trim()}`);
+          }
+        }
+        lines.push("");
+      }
+    } else if (result.kind === "mapped") {
+      const promptText = (result.primaryText || result.raw || "").trim();
+      if (promptText) {
+        lines.push("## Prompt");
+        lines.push("");
+        lines.push(promptText);
+        lines.push("");
+      }
+      if (result.negativePrompt) {
+        lines.push("## Negative Prompt");
+        lines.push("");
+        lines.push(result.negativePrompt.trim());
+        lines.push("");
+      }
+      if (Array.isArray(result.meta) && result.meta.length) {
+        lines.push("## Metadata");
+        lines.push("");
+        for (const item of result.meta) {
+          const label = item?.label || item?.key || "Meta";
+          const val = item?.value || "";
+          if (label && val) {
+            lines.push(`### ${label.trim()}`);
+            lines.push(val.trim());
+            lines.push("");
+          }
+        }
+      }
+      const tags = Array.isArray(result.tags) ? result.tags : [];
+      if (tags.length) {
+        lines.push("## Tags");
+        lines.push("");
+        for (const tag of tags) {
+          if (tag && String(tag).trim()) {
+            lines.push(`- ${String(tag).trim()}`);
+          }
+        }
+        lines.push("");
+      }
+      if (result.salvaged && result.raw && result.raw !== result.primaryText) {
+        lines.push("## Raw Output");
+        lines.push("");
+        lines.push(result.raw.trim());
+        lines.push("");
+      }
+    } else {
+      // Faithful / Standard prompt mode
+      const viPrompt = result.vi?.prompt ? result.vi.prompt.trim() : "";
+      const enPrompt = result.en?.prompt ? result.en.prompt.trim() : "";
+
+      if (viPrompt) {
+        lines.push("## Vietnamese Prompt");
+        lines.push("");
+        lines.push(viPrompt);
+        lines.push("");
+      }
+      if (enPrompt) {
+        lines.push("## English Prompt");
+        lines.push("");
+        lines.push(enPrompt);
+        lines.push("");
+      }
+      const tags =
+        Array.isArray(result.vi_style_tags) && result.vi_style_tags.length
+          ? result.vi_style_tags
+          : Array.isArray(result.en_style_tags)
+            ? result.en_style_tags
+            : [];
+      if (tags.length) {
+        lines.push("## Tags");
+        lines.push("");
+        for (const tag of tags) {
+          if (tag && String(tag).trim()) {
+            lines.push(`- ${String(tag).trim()}`);
+          }
+        }
+        lines.push("");
+      }
+    }
+
+    return lines.join("\n").trim() + "\n";
+  }
+
+  function downloadResultAsMarkdown() {
+    if (!state.result) {
+      return;
+    }
+    try {
+      const selectedMode = modeById(state.mode);
+      const modeName = selectedMode?.name || "Result";
+      const markdown = buildResultMarkdown(state.result, selectedMode, state.target);
+      const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const safeName = sanitizeFileName(modeName);
+      const timestamp = formatTimestampForFile(new Date());
+      const filename = `BromptCard-${safeName}-${timestamp}.md`;
+
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 1000);
+    } catch (error) {
+      console.error("BromptCard: Markdown download failed", error);
+    }
+  }
+
   function renderMainBody() {
     if (state.status === "loading") {
       const pct = Math.max(0, Math.min(100, Number(state.progress) || 0));
@@ -2743,21 +3080,7 @@
     }
 
     if (state.status === "success" && state.result) {
-      if (state.result.kind === "style") {
-        return renderStyleBody();
-      }
-      if (state.result.kind === "mapped") {
-        return renderMappedBody();
-      }
-      return `
-        ${renderPreview()}
-        <p class="analysis-text">${escapeHtml(currentText())}</p>
-        <div class="style-tags">
-          ${currentStyleTags()
-            .map((tag) => `<span class="style-pill">${escapeHtml(tag)}</span>`)
-            .join("")}
-        </div>
-      `;
+      return renderResultBody();
     }
 
     return `
@@ -2766,6 +3089,81 @@
       </div>
       <div class="hint-card">
         <button class="copy-button" data-action="analyze-largest" style="width:100%;">${escapeHtml(t("analyzeLargest"))}</button>
+      </div>
+    `;
+  }
+
+  function renderResultBody() {
+    const selectedMode = modeById(state.mode);
+    const modeName = selectedMode?.name || "Result";
+    const text = currentText();
+    const charCount = text ? text.length : 0;
+    const isStyle = state.result?.kind === "style";
+    const statusLabel = isStyle ? t("styleResultReady") : t("promptReady");
+    const langBadge = state.result?.kind !== "style" && state.result?.kind !== "mapped" ? state.language.toUpperCase() : "";
+    const metaParts = [];
+    if (charCount > 0) {
+      metaParts.push(`${charCount.toLocaleString()} ${t("characters")}`);
+    }
+    if (langBadge) {
+      metaParts.push(langBadge);
+    }
+    const metaText = metaParts.join(" · ");
+
+    const compactCardHtml = `
+      <div class="compact-card">
+        <div class="compact-card-header">
+          ${state.target?.src ? `<div class="compact-card-thumb"><img src="${escapeHtml(state.target.src)}" alt="" /></div>` : ""}
+          <div class="compact-card-info">
+            <div class="compact-card-title">${escapeHtml(modeName)}</div>
+            <div class="compact-card-meta"><span>${escapeHtml(statusLabel)}</span>${metaText ? `<span>•</span><span>${escapeHtml(metaText)}</span>` : ""}</div>
+          </div>
+        </div>
+        <div class="compact-card-actions">
+          <button class="compact-btn primary" data-action="copy-compact">
+            <svg class="pc-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+            <span class="copy-compact-label">${escapeHtml(t("copy"))}</span>
+          </button>
+          <button class="compact-btn" data-action="toggle-expand-result" aria-expanded="${resultExpanded ? "true" : "false"}">
+            <svg class="pc-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${resultExpanded ? '<line x1="18" y1="12" x2="6" y2="12"/>' : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'}</svg>
+            <span>${escapeHtml(resultExpanded ? t("collapseDetails") : t("viewDetails"))}</span>
+          </button>
+          <button class="compact-btn" data-action="download-markdown" title="${escapeHtml(t("downloadMdTitle"))}">
+            <svg class="pc-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>${escapeHtml(t("downloadMd"))}</span>
+          </button>
+        </div>
+      </div>
+    `;
+
+    if (!resultExpanded) {
+      return compactCardHtml;
+    }
+
+    return `
+      ${compactCardHtml}
+      <div class="expanded-result-container">
+        ${renderDetailedResult()}
+      </div>
+    `;
+  }
+
+  function renderDetailedResult() {
+    if (!state.result) {
+      return "";
+    }
+    if (state.result.kind === "style") {
+      return renderStyleBody();
+    }
+    if (state.result.kind === "mapped") {
+      return renderMappedBody();
+    }
+    return `
+      <p class="analysis-text">${escapeHtml(currentText())}</p>
+      <div class="style-tags">
+        ${currentStyleTags()
+          .map((tag) => `<span class="style-pill">${escapeHtml(tag)}</span>`)
+          .join("")}
       </div>
     `;
   }
@@ -2826,7 +3224,6 @@
       : "";
 
     return `
-      ${renderPreview()}
       <div class="style-meta">${meta}</div>
       <div class="style-block">
         <div class="style-field-label">${escapeHtml(t("styleTransfer"))}</div>
@@ -2852,7 +3249,6 @@
     const rawBlock = r.salvaged && r.raw && r.raw !== r.primaryText ? literalField("Raw", r.raw) : "";
 
     return `
-      ${renderPreview()}
       <div class="style-block">
         <div class="style-field-label">${escapeHtml(modeById(state.mode)?.name || "Mode")}</div>
         <p class="analysis-text style-transfer">${escapeHtml(r.primaryText || r.raw || "")}</p>
@@ -2899,6 +3295,7 @@
       if (!item) {
         return;
       }
+      resultExpanded = false;
       setState({
         panelOpen: true,
         status: "success",
@@ -3032,6 +3429,16 @@
     });
 
     body.querySelector('[data-action="analyze-largest"]')?.addEventListener("click", analyzeLargestImageOnPage);
+    body.querySelector('[data-action="toggle-expand-result"]')?.addEventListener("click", () => {
+      resultExpanded = !resultExpanded;
+      render();
+    });
+    body.querySelector('[data-action="download-markdown"]')?.addEventListener("click", () => {
+      downloadResultAsMarkdown();
+    });
+    body.querySelector('[data-action="copy-compact"]')?.addEventListener("click", () => {
+      copyCurrentView();
+    });
     renderHistory();
   }
 
