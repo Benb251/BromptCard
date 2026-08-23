@@ -26,8 +26,8 @@ HOW IT WORKS
 2. Open the BromptCard popup.
 3. Enable the websites where you want BromptCard to work. `pinterest.com` is enabled by default.
 4. On an enabled site, right-click an image or hover it.
-5. Click Faithful or Style.
-6. BromptCard sends the image to your Gemini tab in the background and reads the structured reply.
+5. Click Faithful, Style, or a custom Gem mode you added.
+6. Analysis opens or reuses the correct Gemini Gem tab, keeps it in a compact window while paste/send/read runs, then restores the source tab and shows the structured reply.
 
 SITE CONTROL
 - BromptCard does not stay active on every page.
@@ -35,9 +35,10 @@ SITE CONTROL
 - Subdomains are covered automatically.
 - Outside the enabled-site list, the floating buttons and panel stay quiet.
 
-TWO MODES
-- Faithful: reconstructs the image into a faithful, reproduction-ready prompt in Vietnamese and English. Always free.
-- Style: extracts the transferable visual style (medium, shape language, lighting logic, palette, finish) plus a ready-to-use [SUBJECT] transfer prompt and negative prompt.
+BUILT-IN AND CUSTOM MODES
+- Faithful is a built-in mode: reconstructs the image into a faithful, reproduction-ready prompt in Vietnamese and English. Always free.
+- Style is a built-in mode: extracts the transferable visual style (medium, shape language, lighting logic, palette, finish) plus a ready-to-use [SUBJECT] transfer prompt and negative prompt.
+- Users can add custom Gem modes that point to their own Gemini Gems.
 
 FEATURES
 - Vietnamese + English output side by side.
@@ -46,6 +47,7 @@ FEATURES
 - Local history with thumbnails - nothing leaves your device except what goes to your own Gemini tab.
 - Screenshot crop for canvas or protected images.
 - One-click copy.
+- Custom Gem modes in addition to the built-in Faithful and Style modes.
 
 PRICING
 - All current modes are free and unlimited.
@@ -68,8 +70,8 @@ CÁCH DÙNG
 2. Mở popup của BromptCard.
 3. Bật các website bạn muốn dùng. `pinterest.com` được bật mặc định.
 4. Trên một site đã bật, chuột phải vào ảnh hoặc di chuột lên ảnh.
-5. Bấm Faithful hoặc Style.
-6. BromptCard gửi ảnh vào tab Gemini ở chế độ nền và đọc kết quả có cấu trúc.
+5. Bấm Faithful, Style, hoặc một chế độ Gem tùy chỉnh bạn đã thêm.
+6. Phân tích mở hoặc tái sử dụng đúng tab Gemini Gem, giữ tab đó trong cửa sổ compact trong lúc dán/gửi/đọc, rồi khôi phục tab nguồn và hiện kết quả có cấu trúc.
 
 KIỂM SOÁT WEBSITE
 - BromptCard không hoạt động ồn ào trên mọi trang nữa.
@@ -77,9 +79,10 @@ KIỂM SOÁT WEBSITE
 - Subdomain được áp dụng tự động.
 - Ngoài danh sách website được bật, nút nổi và panel sẽ giữ im lặng.
 
-HAI CHẾ ĐỘ
-- Faithful: tái tạo ảnh thành prompt trung thực, sẵn sàng tái dựng, bằng tiếng Việt và tiếng Anh. Luôn miễn phí.
-- Style: trích xuất phong cách thị giác có thể chuyển giao (chất liệu, ngôn ngữ hình khối, logic ánh sáng, bảng màu, độ hoàn thiện) kèm prompt chuyển phong cách dạng [SUBJECT] và negative prompt.
+CHẾ ĐỘ CÓ SẴN VÀ TÙY CHỈNH
+- Faithful là chế độ có sẵn: tái tạo ảnh thành prompt trung thực, sẵn sàng tái dựng, bằng tiếng Việt và tiếng Anh. Luôn miễn phí.
+- Style là chế độ có sẵn: trích xuất phong cách thị giác có thể chuyển giao (chất liệu, ngôn ngữ hình khối, logic ánh sáng, bảng màu, độ hoàn thiện) kèm prompt chuyển phong cách dạng [SUBJECT] và negative prompt.
+- Người dùng có thể thêm chế độ Gem tùy chỉnh trỏ tới Gemini Gem của chính họ.
 
 TÍNH NĂNG
 - Kết quả tiếng Việt + tiếng Anh song song.
@@ -88,6 +91,7 @@ TÍNH NĂNG
 - Lịch sử cục bộ kèm hình thu nhỏ - không gì rời khỏi thiết bị ngoài dữ liệu bạn gửi vào tab Gemini của chính bạn.
 - Cắt ảnh màn hình cho ảnh canvas hoặc ảnh được bảo vệ.
 - Sao chép một chạm.
+- Chế độ Gem tùy chỉnh ngoài hai chế độ có sẵn Faithful và Style.
 
 GIÁ
 - Tất cả chế độ hiện tại đều miễn phí và không giới hạn.
